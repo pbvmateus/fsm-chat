@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>FSM Camera Probe</title>
+<style>
+  html, body { margin: 0; padding: 0; font-family: -apple-system, Segoe UI, Roboto, sans-serif; background: #f5f6f7; color: #32363a; }
+  .wrap { padding: 16px; max-width: 640px; margin: 0 auto; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .sub { font-size: 13px; color: #6a6d70; margin: 0 0 16px; }
+  button { font-size: 16px; padding: 12px 18px; border: none; border-radius: 8px; background: #0a6ed1; color: #fff; width: 100%; margin-bottom: 14px; }
+  button:active { background: #085caf; }
+  video { width: 100%; background: #000; border-radius: 8px; min-height: 180px; display: block; margin-bottom: 14px; }
+  .log { background: #1e1e1e; color: #d4d4d4; font-family: monospace; font-size: 12px; line-height: 1.5; padding: 12px; border-radius: 8px; white-space: pre-wrap; word-break: break-word; min-height: 200px; }
+  .ok { color: #4ec9b0; }
+  .err { color: #f48771; }
+  .warn { color: #dcdcaa; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; margin-left: 6px; }
+  .pill.g { background: #c8e6c9; color: #1b5e20; }
+  .pill.r { background: #ffcdd2; color: #b71c1c; }
+  .pill.y { background: #fff3cd; color: #533f03; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>FSM Camera Probe <span id="verdict" class="pill y">testing…</span></h1>
+  <p class="sub">Tests whether this environment (especially the FSM mobile web container) will grant camera access. No video is sent anywhere — this is local only.</p>
+
+  <button id="startBtn">Request camera</button>
+  <video id="preview" autoplay playsinline muted></video>
+  <div id="log" class="log"></div>
+</div>
+
+<script>
+(function () {
+  var logEl = document.getElementById("log");
+  var verdictEl = document.getElementById("verdict");
+  var videoEl = document.getElementById("preview");
+  var startBtn = document.getElementById("startBtn");
+
+  function line(msg, cls) {
+    var span = document.createElement("span");
+    if (cls) span.className = cls;
+    span.textContent = msg + "\n";
+    logEl.appendChild(span);
+  }
+  function setVerdict(text, cls) {
+    verdictEl.textContent = text;
+    verdictEl.className = "pill " + cls;
+  }
+
+  // --- Environment report (runs immediately) ---
+  line("== Environment ==", "warn");
+  line("URL: " + location.href);
+  var framed = (window.parent && window.parent !== window);
+  line("In iframe/webview frame: " + framed);
+  line("Secure context (https): " + window.isSecureContext);
+  line("User agent: " + navigator.userAgent);
+
+  var hasMediaDevices = !!(navigator.mediaDevices);
+  var hasGUM = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  var hasLegacyGUM = !!(navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia);
+
+  line("navigator.mediaDevices present: " + hasMediaDevices, hasMediaDevices ? "ok" : "err");
+  line("getUserMedia (modern) present: " + hasGUM, hasGUM ? "ok" : "err");
+  line("legacy getUserMedia present: " + hasLegacyGUM, hasLegacyGUM ? "warn" : "");
+
+  // Permissions API (not always available, esp. in webviews)
+  if (navigator.permissions && navigator.permissions.query) {
+    navigator.permissions.query({ name: "camera" }).then(function (p) {
+      line("Permissions API camera state: " + p.state, p.state === "denied" ? "err" : "ok");
+    }).catch(function (e) {
+      line("Permissions API camera query failed: " + e.message, "warn");
+    });
+  } else {
+    line("Permissions API: not available", "warn");
+  }
+
+  if (!window.isSecureContext) {
+    line("WARNING: not a secure context — getUserMedia is blocked without https.", "err");
+    setVerdict("no https", "r");
+  }
+  if (!hasGUM && !hasLegacyGUM) {
+    line("VERDICT: getUserMedia is NOT available in this environment.", "err");
+    line("If you see this inside the FSM mobile app, the web container does not expose the camera API — one-way video from mobile is not possible here as-is.", "err");
+    setVerdict("no camera API", "r");
+  } else {
+    line("getUserMedia API is available. Tap 'Request camera' to test actual access + permission.", "ok");
+    setVerdict("tap to test", "y");
+  }
+
+  // --- Actual camera request (on button tap, since webviews require a gesture) ---
+  startBtn.addEventListener("click", function () {
+    line("\n== Requesting camera (user tapped) ==", "warn");
+
+    var getUM = null;
+    if (hasGUM) {
+      getUM = function (c) { return navigator.mediaDevices.getUserMedia(c); };
+    } else if (hasLegacyGUM) {
+      var legacy = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
+      getUM = function (c) {
+        return new Promise(function (res, rej) { legacy.call(navigator, c, res, rej); });
+      };
+    }
+
+    if (!getUM) {
+      line("Cannot request — no getUserMedia available.", "err");
+      return;
+    }
+
+    // Prefer the rear camera (what a technician would point at equipment).
+    var constraints = { video: { facingMode: { ideal: "environment" } }, audio: false };
+    line("Constraints: " + JSON.stringify(constraints));
+
+    getUM(constraints).then(function (stream) {
+      line("SUCCESS: camera stream acquired.", "ok");
+      var tracks = stream.getVideoTracks();
+      line("Video tracks: " + tracks.length, "ok");
+      if (tracks[0]) {
+        line("Track label: " + (tracks[0].label || "(no label)"), "ok");
+        var s = tracks[0].getSettings ? tracks[0].getSettings() : {};
+        line("Settings: " + JSON.stringify(s), "ok");
+      }
+      try {
+        videoEl.srcObject = stream;
+      } catch (e) {
+        videoEl.src = URL.createObjectURL(stream);
+      }
+      line("VERDICT: camera WORKS here. One-way video from this client is feasible.", "ok");
+      setVerdict("camera works", "g");
+    }).catch(function (err) {
+      line("FAILED: " + err.name + " — " + err.message, "err");
+      // Interpret the common errors:
+      if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+        line("Interpretation: permission was DENIED (by the user, the OS, or the webview policy). In the FSM app this often means the container/app lacks camera permission.", "err");
+        setVerdict("denied", "r");
+      } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
+        line("Interpretation: no camera device found.", "err");
+        setVerdict("no device", "r");
+      } else if (err.name === "NotReadableError" || err.name === "TrackStartError") {
+        line("Interpretation: camera is in use by another app, or hardware error.", "warn");
+        setVerdict("busy/error", "y");
+      } else if (err.name === "SecurityError") {
+        line("Interpretation: blocked for security reasons (often non-https or webview policy).", "err");
+        setVerdict("blocked", "r");
+      } else {
+        line("Interpretation: unexpected error — note the name above.", "err");
+        setVerdict("error", "r");
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>
