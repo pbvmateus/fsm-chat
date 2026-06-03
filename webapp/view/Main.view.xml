@@ -18,12 +18,11 @@
           <VBox class="fsmChatHeaderTitleBox">
             <Title text="{i18n>chatTitle}" level="H2" class="fsmChatHeaderTitle" />
             <Text
-              text="{= ${context>/_bound} ? 'activity: ' + ${context>/objectId} : ${context>/_peerLabel} }"
+              text="{= 'activity: ' + (${context>/objectId} ? ${context>/objectId} : '(none)') }"
               maxLines="2"
               class="fsmChatHeaderSub" />
             <Text
-              text="{= ${context>/_bound} ? '(' + ${context>/role} + ' via ' + ${context>/_contextSource} + ')' : '' }"
-              visible="{= !!${context>/_bound} }"
+              text="{= 'src: ' + (${context>/_contextSource} ? ${context>/_contextSource} : '?') + ' / ' + (${context>/role} ? ${context>/role} : '?') }"
               class="fsmChatHeaderSub" />
           </VBox>
         </contentLeft>
@@ -117,6 +116,7 @@
             }"
             showSeparators="None"
             backgroundDesign="Transparent"
+            showNoData="false"
             class="fsmChatList">
             <CustomListItem class="fsmChatItem">
               <FlexBox
