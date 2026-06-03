@@ -68,6 +68,14 @@ sap.ui.define([], function () {
     this._rawLog = [];
     var that = this;
 
+    // Build marker — lets us confirm which bundle is actually live. If you do
+    // NOT see this line in the debug box, you are running a stale/cached build
+    // and need to hard-refresh / wait for the GitHub Pages deploy to finish.
+    var BUILD = "fsm-chat build viewstate-3";
+    if (this._debug) {
+      this._rawLog.push("=== " + BUILD + " — selection listener arming ===");
+    }
+
     // DEBUG: capture EVERY message the host posts to this iframe, regardless
     // of whether the SDK library recognises it.
     if (this._debug) {
@@ -86,13 +94,10 @@ sap.ui.define([], function () {
         if (typeof self._onDebug === "function") {
           self._onDebug(self._rawLog.slice());
         }
-        try {
-          var maybe = self._extractId(
-            (typeof e.data === "string") ? JSON.parse(e.data) : e.data);
-          if (maybe) {
-            self._rawLog.push("  -> extractId found: " + maybe);
-          }
-        } catch (x2) { /* not JSON / no id */ }
+        // ALSO run the selection handler here (single proven-firing path).
+        // This guarantees that if the raw listener sees the message — which
+        // the logs confirm it does — the binding is attempted too.
+        self._handleSelectionMessage(e, "debug-raw");
       };
       window.addEventListener("message", this._rawListener, false);
       window.__FSM_CHAT_RAWLOG__ = this._rawLog;
@@ -110,40 +115,7 @@ sap.ui.define([], function () {
     // isAvailable()) would silently disable auto-binding whenever the CDN
     // library is slow/blocked. We only need to be inside an iframe.
     this._viewStateListener = function (e) {
-      var data = e.data;
-      try {
-        if (typeof data === "string") { data = JSON.parse(data); }
-      } catch (x) { return; }
-      if (!data || typeof data !== "object") { return; }
-
-      var type = data.type || "";
-      if (type.indexOf("SET_VIEW_STATE") === -1) { return; }
-
-      var payload = data.value || {};
-      var key = payload.key;
-      var val = payload.value;
-      if (val == null) { return; }
-
-      var sId = null;
-      if (key === "activityID" || key === "activityId") {
-        sId = (typeof val === "string") ? val : that._extractId(val);
-      } else if (key === "selectedSidebar") {
-        var rawId = (val && val.id) ? val.id : that._extractId(val);
-        if (rawId && typeof rawId === "string") {
-          var idx = rawId.indexOf(":");
-          sId = idx >= 0 ? rawId.slice(idx + 1) : rawId;
-        }
-      }
-
-      if (sId) {
-        if (that._debug) {
-          that._rawLog.push("  -> BOUND activity: " + sId);
-          if (typeof that._onDebug === "function") {
-            that._onDebug(that._rawLog.slice());
-          }
-        }
-        that._deliverSelection(sId);
-      }
+      that._handleSelectionMessage(e, "primary");
     };
     if (window.parent && window.parent !== window) {
       window.addEventListener("message", this._viewStateListener, false);
@@ -288,6 +260,53 @@ sap.ui.define([], function () {
     }
     return ctx.activityId || ctx.serviceCallId || ctx.selectedActivityId ||
       ctx.selectedActivity || ctx.objectId || null;
+  };
+
+  /**
+   * Parse a raw window 'message' event and, if it is a SET_VIEW_STATE carrying
+   * an activity selection, deliver the activity id. Shared by the primary
+   * listener and the debug raw listener so there is ONE source of truth.
+   *
+   * Handles the exact shapes observed on us.fsm.cloud.sap / WFM_ACTIVITY_SIDEBAR:
+   *   {"type":"V1.SET_VIEW_STATE","value":{"key":"activityID","value":"<id>"}}
+   *   {"type":"V1.SET_VIEW_STATE","value":{"key":"selectedSidebar",
+   *      "value":{"eventId":"...","id":"ACTIVITY:<id>"}}}
+   */
+  FsmShell.prototype._handleSelectionMessage = function (e, source) {
+    var data = e && e.data;
+    try {
+      if (typeof data === "string") { data = JSON.parse(data); }
+    } catch (x) { return; }
+    if (!data || typeof data !== "object") { return; }
+
+    var type = data.type || "";
+    if (type.indexOf("SET_VIEW_STATE") === -1) { return; }
+
+    var payload = data.value || {};
+    var key = payload.key;
+    var val = payload.value;
+    if (val == null) { return; }
+
+    var sId = null;
+    if (key === "activityID" || key === "activityId") {
+      sId = (typeof val === "string") ? val : this._extractId(val);
+    } else if (key === "selectedSidebar") {
+      var rawId = (val && val.id) ? val.id : this._extractId(val);
+      if (rawId && typeof rawId === "string") {
+        var idx = rawId.indexOf(":");
+        sId = idx >= 0 ? rawId.slice(idx + 1) : rawId;
+      }
+    }
+
+    if (sId) {
+      if (this._debug) {
+        this._rawLog.push("  -> BOUND activity (" + (source || "?") + "): " + sId);
+        if (typeof this._onDebug === "function") {
+          this._onDebug(this._rawLog.slice());
+        }
+      }
+      this._deliverSelection(sId);
+    }
   };
 
   /**
