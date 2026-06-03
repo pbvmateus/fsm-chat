@@ -115,50 +115,67 @@ over TLS) share the conversation in real time.
 
 ## 3) Install as an SAP FSM extension
 
-SAP FSM lets you add custom UI as **extensions / custom apps** that are embedded
-as screens inside the **mobile** and **shell** clients. You register the
-**deployed URL** of this app (e.g. your GitHub Pages URL).
+**Important:** the shell and the mobile app use *two different mechanisms*, so
+you configure this twice:
 
-High-level steps (exact labels vary slightly by FSM release):
+- **Dispatcher (shell)** → a custom **Extension** placed in the **Side Bar** outlet.
+- **Technician (mobile)** → a **Web Container**.
 
-1. **Log in to SAP FSM Admin** with an account that can manage extensions
-   (Company/Account level → **Extensions** / **Custom Extensions**).
-2. **Create a new extension** of type **Cloud / Custom (URL-based)**.
-3. **Point it at your deployed app.** Use your GitHub Pages URL as the base and
-   `index.html` as the entry page:
-   ```
-   https://<you>.github.io/<repo>/index.html
-   ```
-4. **Add launch parameters** so the app knows who/what it is. FSM substitutes
-   these at runtime. Recommended query parameters:
+### 3a) Dispatcher — Shell extension in the Side Bar
 
-   For the **mobile (technician)** placement:
+1. In the **FSM Shell**, go to **Foundational Services → Extensions → Directory**.
+2. **Add a custom extension** and point it at your deployed app:
    ```
-   ?role=technician&client=MOBILE&objectId=${objectId}&userId=${userId}&userName=${userName}
-   ```
-   For the **shell (dispatcher)** placement:
-   ```
-   ?role=dispatcher&client=SHELL&objectId=${objectId}&userId=${userId}&userName=${userName}
+   https://<you>.github.io/<repo>/index.html?role=dispatcher&client=SHELL
    ```
    (For real-time cross-device, also append `&ws=wss://your-relay`.)
+3. For the **placement / outlet**, choose the **Side Bar** (not "embed in Service
+   Call screen"). The sidebar stays open across screens.
+4. **Assign visibility** to your dispatcher user group and **save / publish**.
 
-5. **Attach the extension to a screen / object.** Bind it to the **Service Call**
-   (or Activity) detail so both technician and dispatcher open it from the same
-   object. `objectId` is what ties the two clients to the same conversation.
-6. **Assign visibility** to the relevant user groups/roles and **save / publish**.
-7. Open the same Service Call on a device running the **FSM mobile app** and in
-   the **FSM shell app** → the chat connects the two.
+On load, the app initializes the **FSM Shell SDK** (`REQUIRE_CONTEXT`) to get the
+logged-in user automatically. It then tries to read the **currently selected
+Service Call** from the Shell. See the note below about why that part is
+best-effort.
 
-`fsm-extension.json` in this repo documents these same fields in machine-readable
-form and is a handy checklist while filling in the Admin UI.
+### 3b) Technician — Mobile Web Container
+
+1. In **Admin**, open the **Web Containers** configuration (governs external
+   pages shown inside the iOS/Android app).
+2. Create a container pointing at:
+   ```
+   https://<you>.github.io/<repo>/index.html?role=technician&client=MOBILE
+   ```
+3. Surface it in the side menu (or a workflow step) and enable it for the
+   technician's user. Re-sync / re-login on the device.
+
+`fsm-extension.json` documents both configurations as a checklist.
+
+### How a conversation gets scoped to an activity (read this)
+
+The chat is **per Service Call**: a given Service Call ID maps to one room, and
+both sides must use the same ID to talk.
+
+- **Automatic (where supported):** in the shell sidebar, the app asks the Shell
+  SDK for the selected activity and binds the chat to it automatically, updating
+  when the dispatcher clicks a different Service Call.
+- **The honest caveat:** SAP's documented channel for "the selected object"
+  (the Shell SDK *ViewState*) is **restricted for outlet/sidebar extensions** and
+  may not deliver the selection in your tenant/version. The app attempts several
+  channels defensively, but **does not assume** they work.
+- **Reliable fallback (always available):** if no selection arrives, the app
+  shows a small panel where you **enter the Service Call ID** to open that room.
+  The technician enters the **same ID**. This guarantees per-activity chat works
+  today regardless of what the platform exposes. You can also skip the panel by
+  passing `&objectId=SC123` in the URL.
 
 ### Notes for FSM embedding
 
 - The app sets `frameOptions="allow"` so it can run inside the FSM iframe.
-- It auto-detects the client (MOBILE vs SHELL) and falls back gracefully if a
-  parameter is missing, so it still renders even with a minimal configuration.
-- It reads the FSM shell SDK (`window.SAP_FSM_SHELL_SDK`) for the logged-in user
-  when available; otherwise it uses the `userName`/`userId` launch parameters.
+- It loads SAP's official `fsm-shell` client library (v1.20.0) from a CDN and
+  talks to the Shell host via the documented `SHELL_EVENTS` API.
+- Identity (`user`, `userId`) comes from the Shell SDK when present; URL params
+  `userId` / `userName` override it for standalone testing.
 
 ---
 

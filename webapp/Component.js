@@ -1,35 +1,64 @@
+// Load the SAP fsm-shell client library as an AMD module named
+// "fsm-shell-client". Pinned to a specific version for reproducibility.
+// When this loads, it exposes window.FSMShell ({ ShellSdk, SHELL_EVENTS }).
+sap.ui.loader.config({
+  paths: {
+    "fsm-shell-client": "https://unpkg.com/fsm-shell@1.20.0/release/fsm-shell-client"
+  },
+  shim: {
+    "fsm-shell-client": {
+      amd: true,
+      exports: "FSMShell"
+    }
+  }
+});
+
 sap.ui.define([
   "sap/ui/core/UIComponent",
   "sap/ui/model/json/JSONModel",
-  "sap/ui/Device"
-], function (UIComponent, JSONModel, Device) {
+  "sap/ui/Device",
+  "com/test/fsmchat/model/FsmShell",
+  "fsm-shell-client"
+], function (UIComponent, JSONModel, Device, FsmShell, FSMShellLib) {
   "use strict";
+
+  // Ensure the library is reachable as a global for FsmShell.js, regardless
+  // of how the AMD shim resolved it.
+  if (FSMShellLib && !window.FSMShell) {
+    window.FSMShell = FSMShellLib;
+  }
 
   return UIComponent.extend("com.test.fsmchat.Component", {
     metadata: {
-      manifest: "json"
+      manifest: "json",
+      events: {
+        activityBound: {}
+      }
     },
 
     init: function () {
       UIComponent.prototype.init.apply(this, arguments);
 
-      // Device model (used for responsive behaviour: mobile vs shell)
       this.setModel(new JSONModel(Device), "device");
 
-      // Resolve FSM context (user, role, object id) from component data,
-      // URL params, or the FSM shell SDK if present.
-      var oContext = this._resolveFsmContext();
-      this.setModel(new JSONModel(oContext), "context");
+      // Seed context from URL / startup params synchronously so the UI can
+      // render immediately; Shell-derived values fill in asynchronously.
+      var oSeed = this._seedContext();
+      var oContextModel = new JSONModel(oSeed);
+      this.setModel(oContextModel, "context");
+      this._contextModel = oContextModel;
 
       this.getRouter().initialize();
+
+      // Kick off async Shell resolution (no-op when running standalone).
+      this._resolveViaShell();
     },
 
     /**
-     * Determine who is using the app and in which client.
-     * FSM passes context via the extension SDK (window.SAP_FSM_SHELL_SDK)
-     * or via URL parameters when launched as a screen extension.
+     * Synchronous best-effort context from URL params / FLP startup params.
+     * Establishes role, client, identity fallbacks, and an initial room.
      */
-    _resolveFsmContext: function () {
+    _seedContext: function () {
       var oComponentData = this.getComponentData() || {};
       var oStartupParams = (oComponentData.startupParameters) || {};
       var oUrlParams = new URLSearchParams(window.location.search);
@@ -44,50 +73,23 @@ sap.ui.define([
         return fallback;
       }
 
-      // Detect client: shell SDK exposes a context object; mobile injects
-      // a bridge. Fall back to URL param, then to device heuristics.
+      var bFramed = window.parent && window.parent !== window;
       var sClient = pick("client", null);
       if (!sClient) {
-        if (window.SAP_FSM_SHELL_SDK) {
-          sClient = "SHELL";
-        } else if (window.FSM_MOBILE_BRIDGE || Device.system.phone) {
-          sClient = "MOBILE";
-        } else {
-          sClient = "SHELL";
-        }
+        sClient = (Device.system.phone && !bFramed) ? "MOBILE" : "SHELL";
       }
 
       var sRole = pick("role", sClient === "MOBILE" ? "technician" : "dispatcher");
-      var sUserId = pick("userId", null);
-      var sUserName = pick("userName", null);
 
-      // Try the FSM shell SDK for richer identity when available.
-      if (!sUserName && window.SAP_FSM_SHELL_SDK) {
-        try {
-          var oCtx = window.SAP_FSM_SHELL_SDK.getContext &&
-            window.SAP_FSM_SHELL_SDK.getContext();
-          if (oCtx && oCtx.user) {
-            sUserId = sUserId || oCtx.user.id;
-            sUserName = oCtx.user.firstName
-              ? (oCtx.user.firstName + " " + (oCtx.user.lastName || "")).trim()
-              : oCtx.user.userName;
-          }
-        } catch (e) {
-          // SDK present but context unavailable — keep fallbacks.
-        }
-      }
+      var sUserId = pick("userId", "u-" + Math.random().toString(36).slice(2, 8));
+      var sUserName = pick("userName",
+        sRole === "technician" ? "Technician" : "Dispatcher");
 
-      if (!sUserId) {
-        sUserId = "u-" + Math.random().toString(36).slice(2, 8);
-      }
-      if (!sUserName) {
-        sUserName = sRole === "technician" ? "Technician" : "Dispatcher";
-      }
-
-      // The conversation is keyed by the FSM object (e.g. a Service Call).
-      // Both clients open the same object => same room => same chat thread.
+      // Activity / Service Call id may come from a launch parameter. If not,
+      // it stays empty and the user binds it manually (or the Shell supplies
+      // it asynchronously).
       var sObjectId = pick("objectId",
-        pick("serviceCallId", pick("activityId", "GENERAL")));
+        pick("serviceCallId", pick("activityId", "")));
 
       return {
         client: sClient,
@@ -95,8 +97,96 @@ sap.ui.define([
         userId: sUserId,
         userName: sUserName,
         objectId: sObjectId,
-        roomId: "fsm-room-" + sObjectId
+        roomId: sObjectId ? "fsm-room-" + sObjectId : "",
+        companyId: "",
+        outlet: "",
+        // UI state flags
+        _bound: !!sObjectId,
+        _contextSource: sObjectId ? "param" : "none",
+        _shellReady: false
       };
+    },
+
+    /**
+     * Asynchronously enrich context from the FSM Shell SDK:
+     *   - real user identity (user, userId)
+     *   - selected activity id (best-effort; see FsmShell.js caveats)
+     */
+    _resolveViaShell: function () {
+      var that = this;
+      var oModel = this._contextModel;
+
+      this._shell = new FsmShell();
+
+      if (!this._shell.isAvailable()) {
+        // Standalone (e.g. GitHub Pages) — nothing to do.
+        return;
+      }
+
+      this._shell.init(
+        { clientIdentifier: "fsm-chat-extension" },
+        function onContext(ctx) {
+          oModel.setProperty("/_shellReady", true);
+          if (!ctx) { return; }
+
+          // Identity: prefer real Shell user over the placeholder.
+          if (ctx.user) {
+            oModel.setProperty("/userName", ctx.user);
+          }
+          if (ctx.userId) {
+            oModel.setProperty("/userId", ctx.userId);
+          }
+          // Stash company/account for potential room namespacing.
+          if (ctx.companyId) {
+            oModel.setProperty("/companyId", ctx.companyId);
+          }
+          if (ctx.targetOutletName) {
+            oModel.setProperty("/outlet", ctx.targetOutletName);
+          }
+        },
+        function onSelection(activityId) {
+          // The Shell told us which Service Call / Activity is selected.
+          that._bindToActivity(activityId, "shell");
+        }
+      );
+    },
+
+    /**
+     * Bind the chat to a specific activity id, recomputing the room.
+     * Called either from the Shell selection callback or from the UI when
+     * the user enters an id manually.
+     *
+     * @param {string} sActivityId
+     * @param {string} sSource  "shell" | "manual" | "param"
+     */
+    _bindToActivity: function (sActivityId, sSource) {
+      if (!sActivityId) { return; }
+      var oModel = this._contextModel;
+      var sRoom = "fsm-room-" + sActivityId;
+      oModel.setProperty("/objectId", String(sActivityId));
+      oModel.setProperty("/roomId", sRoom);
+      oModel.setProperty("/_bound", true);
+      oModel.setProperty("/_contextSource", sSource || "manual");
+
+      // Notify the running controller so it can (re)connect the transport.
+      this.fireEvent("activityBound", { roomId: sRoom });
+    },
+
+    /**
+     * Public helper used by the Main controller to register a listener for
+     * room (re)binding without tightly coupling to the component internals.
+     */
+    onActivityBound: function (fn) {
+      this.attachEvent("activityBound", function (oEvt) {
+        fn(oEvt.getParameter("roomId"));
+      });
+    },
+
+    /**
+     * Public: bind manually from the UI (dispatcher pastes a Service Call id).
+     */
+    bindActivityManually: function (sActivityId) {
+      this._bindToActivity(sActivityId, "manual");
     }
   });
 });

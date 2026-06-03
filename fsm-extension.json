@@ -1,16 +1,17 @@
 {
   "name": "fsm-chat",
   "displayName": "FSM Chat",
-  "description": "Real-time chat channel between a technician (FSM mobile app) and a dispatcher (FSM shell app).",
-  "version": "1.0.0",
+  "description": "Real-time chat between a technician (FSM mobile app) and a dispatcher (FSM shell, side bar), scoped per Service Call / Activity.",
+  "version": "1.1.0",
   "vendor": "test",
 
   "//": "------------------------------------------------------------------",
   "//note": "This descriptor documents how to register the app inside SAP FSM.",
-  "//note2": "In the FSM Admin / Extension Management UI you create a Cloud (custom) extension and point it at the deployed URL of this app (e.g. your GitHub Pages URL). The values below mirror the fields you fill in there.",
+  "//note2": "The SHELL side is a custom Extension placed in the SIDE BAR outlet. The MOBILE side is a Web Container. They are configured in two different places in FSM admin.",
+  "//note3": "clientIdentifier must match the value sent in the REQUIRE_CONTEXT event by the app (see webapp/Component.js). Register it in the extension's allowed origins / client config.",
   "//": "------------------------------------------------------------------",
 
-  "type": "cloud-extension",
+  "clientIdentifier": "fsm-chat-extension",
   "ui5ComponentName": "com.test.fsmchat",
 
   "deployment": {
@@ -21,38 +22,41 @@
 
   "extensions": [
     {
-      "//": "Screen extension shown inside the FSM MOBILE app (technician).",
-      "id": "fsmchat-mobile",
-      "client": "MOBILE",
+      "//": "DISPATCHER — Shell extension in the SIDE BAR outlet.",
+      "//placement": "FSM Shell -> Foundational Services -> Extensions -> Directory -> add custom extension; choose the Side Bar / sidebar outlet as the placement.",
+      "//context": "The app initialises the Shell SDK (REQUIRE_CONTEXT) for identity. It also attempts to read the selected Service Call via the Shell SDK; where the platform does not expose it to outlet extensions, the dispatcher enters the Service Call ID in the app's binding panel.",
+      "id": "fsmchat-shell-sidebar",
+      "client": "SHELL",
+      "outlet": "SIDEBAR",
       "type": "ScreenExtension",
-      "anchor": "ServiceCall.Detail",
-      "title": "Chat with Dispatcher",
+      "title": "Technician Chat",
       "icon": "sap-icon://discussion",
-      "url": "index.html?role=technician&client=MOBILE&objectId=${objectId}&userId=${userId}&userName=${userName}"
+      "url": "index.html?role=dispatcher&client=SHELL"
     },
     {
-      "//": "Screen extension shown inside the FSM SHELL app (dispatcher).",
-      "id": "fsmchat-shell",
-      "client": "SHELL",
-      "type": "ScreenExtension",
-      "anchor": "ServiceCall.Detail",
-      "title": "Chat with Technician",
+      "//": "TECHNICIAN — Mobile Web Container.",
+      "//placement": "FSM Admin -> (Mobile) Web Containers: create a container pointing at the URL below; surface it in the side menu or a workflow step.",
+      "//context": "Mobile web containers pass limited context. For reliable per-activity rooms, pass the Service Call ID explicitly via &objectId=... if your container configuration supports placeholder substitution; otherwise the technician enters the same ID the dispatcher used.",
+      "id": "fsmchat-mobile-webcontainer",
+      "client": "MOBILE",
+      "type": "WebContainer",
+      "title": "Chat with Dispatcher",
       "icon": "sap-icon://discussion",
-      "url": "index.html?role=dispatcher&client=SHELL&objectId=${objectId}&userId=${userId}&userName=${userName}"
+      "url": "index.html?role=technician&client=MOBILE"
     }
   ],
 
   "permissions": {
-    "//": "The app only needs to be embedded and to read the current object/user context.",
     "iframe": true,
     "context": ["user", "object"]
   },
 
   "parameters": {
-    "//": "Placeholders FSM substitutes at launch time. objectId binds both clients to the same conversation (same Service Call => same chat thread).",
-    "objectId": "Current Service Call / Activity id",
-    "userId": "Logged-in user id",
-    "userName": "Logged-in user display name",
+    "role": "technician | dispatcher (sets which side of the chat this instance is)",
+    "client": "MOBILE | SHELL (overrides auto-detection)",
+    "objectId": "OPTIONAL: Service Call / Activity ID to auto-open that room (skips the manual binding panel)",
+    "userId": "OPTIONAL: overrides identity; normally resolved from the Shell SDK",
+    "userName": "OPTIONAL: overrides display name; normally resolved from the Shell SDK",
     "ws": "OPTIONAL: WebSocket relay URL for true cross-device real-time, e.g. wss://your-relay"
   }
 }

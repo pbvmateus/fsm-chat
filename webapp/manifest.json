@@ -107,6 +107,7 @@
     }
   },
   "sap.fsm": {
+    "clientIdentifier": "fsm-chat-extension",
     "extension": {
       "type": "ScreenExtension",
       "supportedClients": ["MOBILE", "SHELL"],
@@ -114,7 +115,8 @@
       "title": "{{appTitle}}",
       "shortTitle": "Chat",
       "subTitle": "{{appDescription}}",
-      "icon": "sap-icon://discussion"
+      "icon": "sap-icon://discussion",
+      "//placement": "In FSM Admin, attach the SHELL extension to the Side Bar outlet (not embedded in the Service Call screen). The app reads the selected activity via the Shell SDK when the platform exposes it, and otherwise lets the dispatcher enter the Service Call ID."
     }
   }
 }

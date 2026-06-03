@@ -158,3 +158,33 @@ html, body, #content, .sapMShell, .sapMApp {
   border-radius: 50%;
   min-width: 2.5rem;
 }
+
+/* ---- Unbound / activity-binding panel ---------------------------- */
+.fsmChatBindPanel {
+  height: 100%;
+  padding: 2rem 1.5rem;
+  box-sizing: border-box;
+  background: var(--sapBackgroundColor, #f5f6f7);
+}
+.fsmChatBindIcon {
+  font-size: 3.25rem;
+  color: var(--sapContent_NonInteractiveIconColor, #b3b3b3);
+  margin-bottom: 1rem;
+}
+.fsmChatBindTitle.sapMTitle {
+  margin-bottom: 0.5rem;
+  color: var(--sapTextColor, #32363a);
+}
+.fsmChatBindHint.sapMText {
+  max-width: 22rem;
+  color: var(--sapContent_LabelColor, #6a6d70);
+  font-size: 0.875rem;
+  line-height: 1.4;
+  margin-bottom: 1.25rem;
+}
+.fsmChatBindRow {
+  gap: 0.5rem;
+}
+.fsmChatBindInput {
+  margin-right: 0.25rem;
+}

@@ -17,7 +17,9 @@
           <core:Icon src="sap-icon://discussion" class="fsmChatHeaderIcon" />
           <VBox class="fsmChatHeaderTitleBox">
             <Title text="{i18n>chatTitle}" level="H2" class="fsmChatHeaderTitle" />
-            <Text text="{context>/_peerLabel}" class="fsmChatHeaderSub" />
+            <Text
+              text="{= ${context>/_bound} ? ${i18n>activityLabel} + ' ' + ${context>/objectId} : ${context>/_peerLabel} }"
+              class="fsmChatHeaderSub" />
           </VBox>
         </contentLeft>
         <contentRight>
@@ -32,17 +34,50 @@
     </customHeader>
 
     <content>
+
+      <!-- ============ UNBOUND STATE: no activity selected yet ============ -->
+      <VBox
+        id="bindPanel"
+        visible="{= !${context>/_bound} }"
+        class="fsmChatBindPanel"
+        alignItems="Center"
+        justifyContent="Center">
+        <core:Icon src="sap-icon://activity-items" class="fsmChatBindIcon" />
+        <Title text="{i18n>bindTitle}" level="H3" class="fsmChatBindTitle" />
+        <Text
+          text="{= ${context>/_shellReady} ? ${i18n>bindHintShell} : ${i18n>bindHint} }"
+          class="fsmChatBindHint"
+          textAlign="Center" />
+        <HBox class="fsmChatBindRow" alignItems="Center">
+          <Input
+            id="manualIdInput"
+            width="14rem"
+            placeholder="{i18n>bindPlaceholder}"
+            value="{/manualId}"
+            submit=".onBindManual"
+            class="fsmChatBindInput" />
+          <Button
+            text="{i18n>bindButton}"
+            type="Emphasized"
+            enabled="{= !!${/manualId} &amp;&amp; ${/manualId}.trim().length > 0 }"
+            press=".onBindManual"
+            class="fsmChatBindBtn" />
+        </HBox>
+      </VBox>
+
+      <!-- ============ BOUND STATE: the chat ============ -->
       <ScrollContainer
         id="msgScroll"
         height="100%"
         width="100%"
         vertical="true"
         focusable="false"
+        visible="{= !!${context>/_bound} }"
         class="fsmChatScroll">
 
         <VBox id="msgContainer" class="fsmChatMsgContainer" width="100%">
 
-          <!-- Empty state -->
+          <!-- Empty thread -->
           <VBox
             id="emptyState"
             visible="{= ${/messages}.length === 0 }"
@@ -94,7 +129,7 @@
     </content>
 
     <footer>
-      <Toolbar class="fsmChatFooter">
+      <Toolbar class="fsmChatFooter" visible="{= !!${context>/_bound} }">
         <TextArea
           id="msgInput"
           width="100%"
