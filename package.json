@@ -1,0 +1,19 @@
+{
+  "name": "fsm-chat-extension",
+  "version": "1.0.0",
+  "description": "SAP Fiori (SAPUI5) extension for real-time chat between an FSM technician (mobile app) and a dispatcher (shell app).",
+  "private": true,
+  "scripts": {
+    "start": "ui5 serve --open index.html",
+    "start:flp": "ui5 serve --open flpSandbox.html",
+    "build": "ui5 build --clean-dest --dest dist",
+    "build:preload": "ui5 build self-contained --clean-dest --dest dist --all",
+    "ws": "node server/ws-server.js"
+  },
+  "devDependencies": {
+    "@ui5/cli": "^3.11.0"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "name": "fsm-chat",
+  "displayName": "FSM Chat",
+  "description": "Real-time chat channel between a technician (FSM mobile app) and a dispatcher (FSM shell app).",
+  "version": "1.0.0",
+  "vendor": "test",
+
+  "//": "------------------------------------------------------------------",
+  "//note": "This descriptor documents how to register the app inside SAP FSM.",
+  "//note2": "In the FSM Admin / Extension Management UI you create a Cloud (custom) extension and point it at the deployed URL of this app (e.g. your GitHub Pages URL). The values below mirror the fields you fill in there.",
+  "//": "------------------------------------------------------------------",
+
+  "type": "cloud-extension",
+  "ui5ComponentName": "com.test.fsmchat",
+
+  "deployment": {
+    "//": "Replace with your actual hosted URL after you push to GitHub.",
+    "url": "https://<your-github-username>.github.io/<your-repo>/",
+    "indexPage": "index.html"
+  },
+
+  "extensions": [
+    {
+      "//": "Screen extension shown inside the FSM MOBILE app (technician).",
+      "id": "fsmchat-mobile",
+      "client": "MOBILE",
+      "type": "ScreenExtension",
+      "anchor": "ServiceCall.Detail",
+      "title": "Chat with Dispatcher",
+      "icon": "sap-icon://discussion",
+      "url": "index.html?role=technician&client=MOBILE&objectId=${objectId}&userId=${userId}&userName=${userName}"
+    },
+    {
+      "//": "Screen extension shown inside the FSM SHELL app (dispatcher).",
+      "id": "fsmchat-shell",
+      "client": "SHELL",
+      "type": "ScreenExtension",
+      "anchor": "ServiceCall.Detail",
+      "title": "Chat with Technician",
+      "icon": "sap-icon://discussion",
+      "url": "index.html?role=dispatcher&client=SHELL&objectId=${objectId}&userId=${userId}&userName=${userName}"
+    }
+  ],
+
+  "permissions": {
+    "//": "The app only needs to be embedded and to read the current object/user context.",
+    "iframe": true,
+    "context": ["user", "object"]
+  },
+
+  "parameters": {
+    "//": "Placeholders FSM substitutes at launch time. objectId binds both clients to the same conversation (same Service Call => same chat thread).",
+    "objectId": "Current Service Call / Activity id",
+    "userId": "Logged-in user id",
+    "userName": "Logged-in user display name",
+    "ws": "OPTIONAL: WebSocket relay URL for true cross-device real-time, e.g. wss://your-relay"
+  }
+}
