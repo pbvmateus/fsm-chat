@@ -25,56 +25,54 @@ shell uses), so the mobile side opens straight into the right activity's chat.
 
 ```
 fsm-chat/
-├─ webapp/                 ← static app (this is the Pages "output directory")
+├─ webapp/                 ← static app (Pages "output directory")
 │  └─ index.html, ...
-├─ functions/
-│  └─ index.html.js        ← runs server-side at the /index.html path
-└─ _routes.json            ← makes ONLY /index.html invoke the function
+└─ functions/
+   └─ fsm.js               ← runs server-side at the /fsm route (NO static file
+                             competes with this path, so no collision)
 ```
+
+> Earlier this function was at `/index.html`, which collided with the static
+> `webapp/index.html` — Cloudflare served the static file (which can't accept
+> POST) and FSM's POST got a 405. Moving it to the standalone `/fsm` path fixes
+> that: `/fsm` has no static file, so the function always handles it.
 
 ## One-time setup
 
-1. Go to **Cloudflare Dashboard → Workers & Pages → Create → Pages →
-   Connect to Git** and pick your `fsm-chat` GitHub repo. (Your source stays in
-   GitHub; Cloudflare builds from it.)
+1. **Cloudflare Dashboard → Workers & Pages → Create → Pages → Connect to Git**,
+   pick your `fsm-chat` repo.
 2. **Build settings:**
    - Framework preset: **None**
-   - Build command: *(leave empty)* — the app is static, loaded from the UI5 CDN
+   - Build command: *(empty)*
    - **Build output directory: `webapp`**
-3. **Important — functions must sit next to the output dir.** Cloudflare looks
-   for `functions/` and `_routes.json` at the **repo root** (they are, in this
-   repo). The static assets come from `webapp/`. This combination is supported:
-   root-level `functions/` + a sub-folder output directory.
-   - If your Cloudflare project does not pick up the function with `webapp` as
-     output, use the alternative layout below.
-4. Deploy. You'll get a URL like `https://fsm-chat-xxx.pages.dev`.
+   - Root directory: `/`
+3. Deploy. You get a URL like `https://fsm-chat-xxx.pages.dev`.
 
-### If the function isn't detected with `webapp` as output
+## Point FSM at the /fsm path (IMPORTANT — note the path)
 
-Some Pages configurations expect `functions/` to be a sibling of the served
-files. If so, move the app to the repo root for the Cloudflare deployment (keep
-GitHub Pages serving `webapp/` separately), or set the output directory to `.`
-and add a `_routes.json` that excludes the asset paths. Tell me and I'll provide
-that exact variant — it depends on how your Pages project is configured.
-
-## Point FSM at the Cloudflare URL
-
-In **FSM Admin → Web Containers → (your container) → Edit**, change the **URL**
-to the Cloudflare one (keep the same query params):
+In **FSM Admin → Web Containers → your container → Edit**, set the **URL** to the
+**/fsm** path (not /index.html):
 
 ```
-https://fsm-chat-xxx.pages.dev/index.html?role=technician&client=MOBILE&debug=1
+https://fsm-chat-xxx.pages.dev/fsm?role=technician&client=MOBILE&debug=1
 ```
 
-Save, reopen on the phone. Flow:
+Keep **Object Types = Activity**. Save.
 
-1. FSM POSTs context (incl. `cloudId`) to that URL.
-2. The function reads `cloudId`, redirects to
-   `.../index.html?role=technician&client=MOBILE&debug=1&objectId=<cloudId>`.
-3. The app boots, reads `objectId`, and connects the chat to that activity.
+Flow on the phone:
+1. FSM POSTs context (incl. `cloudId`) to `/fsm`.
+2. The function reads `cloudId`, 303-redirects to
+   `/index.html?role=technician&client=MOBILE&debug=1&objectId=<cloudId>`.
+3. The app boots, reads `objectId`, connects the chat to that activity.
 
-With `&debug=1` you'll see the activity bind in the debug box. Drop `&debug=1`
-once confirmed.
+## Sanity check before the phone
+
+Open this GET in a browser — it should redirect and load the app (manual panel,
+since a GET has no cloudId):
+```
+https://fsm-chat-xxx.pages.dev/fsm?role=technician&client=MOBILE&debug=1
+```
+If that loads, the function and static serving both work; then test on the phone.
 
 ## Verifying the same room on both sides
 
