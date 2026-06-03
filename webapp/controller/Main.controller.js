@@ -89,6 +89,7 @@ sap.ui.define([
       this._model.setProperty("/messages", []);
       this._model.setProperty("/peerTyping", false);
       this._currentRoom = sRoomId;
+      this._ctxModel.setProperty("/_room", sRoomId);
 
       // Build a fresh per-room context object for the transport.
       var oOpts = {
