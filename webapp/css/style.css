@@ -1,0 +1,160 @@
+/* ===== FSM Chat styles ============================================= */
+
+html, body, #content, .sapMShell, .sapMApp {
+  height: 100%;
+}
+
+.fsmChatPage .sapMPageEnableScrolling {
+  background: var(--sapBackgroundColor, #f5f6f7);
+}
+
+/* ---- Header ------------------------------------------------------- */
+.fsmChatHeaderBar {
+  background: var(--sapShellColor, #354a5f);
+}
+.fsmChatHeaderIcon {
+  color: #ffffff;
+  font-size: 1.5rem;
+  margin: 0 0.75rem 0 0.25rem;
+}
+.fsmChatHeaderTitleBox {
+  justify-content: center;
+}
+.fsmChatHeaderTitle.sapMTitle {
+  color: #ffffff;
+  line-height: 1.1;
+}
+.fsmChatHeaderSub.sapMText {
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 0.75rem;
+}
+.fsmChatConnStatus {
+  margin-right: 0.5rem;
+}
+.fsmChatConnStatus .sapMObjStatusText {
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+/* ---- Message area ------------------------------------------------- */
+.fsmChatScroll {
+  background: var(--sapBackgroundColor, #f5f6f7);
+}
+.fsmChatMsgContainer {
+  padding: 0.75rem 0.5rem 1rem;
+  box-sizing: border-box;
+  min-height: 100%;
+}
+
+.fsmChatList,
+.fsmChatList .sapMListUl {
+  background: transparent;
+}
+.fsmChatItem.sapMCustomLI,
+.fsmChatItem .sapMLIB {
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+.fsmChatItem .sapMLIB:hover,
+.fsmChatItem .sapMLIB.sapMLIBActive {
+  background: transparent;
+}
+
+.fsmChatBubbleWrap {
+  width: 100%;
+  margin: 0.25rem 0;
+}
+
+/* Bubble */
+.fsmChatBubble {
+  max-width: 78%;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.85rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+  word-break: break-word;
+}
+.fsmChatBubble.theirs {
+  background: #ffffff;
+  border-top-left-radius: 0.2rem;
+}
+.fsmChatBubble.mine {
+  background: var(--sapButton_Emphasized_Background, #0a6ed1);
+  border-top-right-radius: 0.2rem;
+}
+.fsmChatBubble.mine .fsmChatText.sapMText,
+.fsmChatBubble.mine .fsmChatTime.sapMText {
+  color: #ffffff;
+}
+.fsmChatBubble.mine .fsmChatTime.sapMText {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.fsmChatSender.sapMText {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--sapLinkColor, #0a6ed1);
+  margin-bottom: 0.1rem;
+  display: block;
+}
+.fsmChatText.sapMText {
+  font-size: 0.9375rem;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  color: var(--sapTextColor, #32363a);
+}
+.fsmChatTime.sapMText {
+  font-size: 0.6875rem;
+  color: var(--sapContent_LabelColor, #6a6d70);
+  margin-top: 0.15rem;
+  display: block;
+}
+
+/* ---- Empty state -------------------------------------------------- */
+.fsmChatEmpty {
+  padding: 3rem 1.5rem;
+  opacity: 0.7;
+}
+.fsmChatEmptyIcon {
+  font-size: 3rem;
+  color: var(--sapContent_NonInteractiveIconColor, #b3b3b3);
+  margin-bottom: 0.75rem;
+}
+.fsmChatEmptyText.sapMText {
+  color: var(--sapContent_LabelColor, #6a6d70);
+  white-space: pre-line;
+  font-size: 0.9375rem;
+}
+
+/* ---- Typing indicator -------------------------------------------- */
+.fsmChatTyping {
+  padding: 0.15rem 0.5rem 0.5rem;
+  min-height: 1.25rem;
+}
+.fsmChatTypingText.sapMText {
+  font-size: 0.75rem;
+  font-style: italic;
+  color: var(--sapContent_LabelColor, #6a6d70);
+}
+
+/* ---- Footer / composer ------------------------------------------- */
+.fsmChatFooter.sapMTB {
+  background: var(--sapGroup_ContentBackground, #ffffff);
+  border-top: 1px solid var(--sapGroup_ContentBorderColor, #d9d9d9);
+  padding: 0.4rem 0.5rem;
+}
+.fsmChatInput {
+  flex: 1 1 auto;
+}
+.fsmChatInput textarea.sapMTextAreaInner {
+  border-radius: 1.1rem;
+  resize: none;
+}
+.fsmChatSendBtn {
+  margin-left: 0.4rem;
+  border-radius: 50%;
+}
+.fsmChatSendBtn .sapMBtnInner {
+  border-radius: 50%;
+  min-width: 2.5rem;
+}

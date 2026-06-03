@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FSM Chat - FLP Sandbox</title>
+
+  <script type="application/json" id="sap-ui-config">
+  {
+    "ushellName": "FSMChatSandbox",
+    "modulePaths": { "com.test.fsmchat": "./" }
+  }
+  </script>
+
+  <script>
+    window["sap-ushell-config"] = {
+      defaultRenderer: "fiori2",
+      applications: {
+        "FSMChat-display": {
+          title: "FSM Chat",
+          description: "Real-time technician/dispatcher chat",
+          additionalInformation: "SAPUI5.Component=com.test.fsmchat",
+          applicationType: "URL",
+          url: "./",
+          navigationMode: "embedded"
+        }
+      }
+    };
+  </script>
+
+  <script
+    src="https://ui5.sap.com/test-resources/sap/ushell/bootstrap/sandbox.js"
+    id="sap-ushell-bootstrap"></script>
+
+  <script
+    id="sap-ui-bootstrap"
+    src="https://ui5.sap.com/resources/sap-ui-core.js"
+    data-sap-ui-theme="sap_horizon"
+    data-sap-ui-resourceroots='{"com.test.fsmchat": "./"}'
+    data-sap-ui-compatVersion="edge"
+    data-sap-ui-async="true"
+    data-sap-ui-frameOptions="allow"
+    data-sap-ui-libs="sap.m,sap.ui.core,sap.ushell,sap.f,sap.ui.layout">
+  </script>
+
+  <script>
+    sap.ui.getCore().attachInit(function () {
+      sap.ushell.Container.createRenderer().placeAt("content");
+    });
+  </script>
+</head>
+<body class="sapUiBody" id="content"></body>
+</html>
