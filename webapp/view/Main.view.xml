@@ -24,6 +24,22 @@
           </VBox>
         </contentLeft>
         <contentRight>
+          <Button
+            id="videoBtn"
+            icon="sap-icon://video"
+            type="Transparent"
+            tooltip="{i18n>shareVideo}"
+            visible="{= !!${context>/_bound} &amp;&amp; ${/videoSupported} &amp;&amp; ${context>/role} === 'technician' &amp;&amp; !${/videoActive} }"
+            press=".onStartVideo"
+            class="fsmChatVideoBtn" />
+          <Button
+            id="videoEndBtn"
+            icon="sap-icon://decline"
+            type="Reject"
+            tooltip="{i18n>endVideo}"
+            visible="{= !!${/videoActive} }"
+            press=".onEndVideo"
+            class="fsmChatVideoBtn" />
           <ObjectStatus
             id="connStatus"
             text="{context>/_connText}"
@@ -92,6 +108,36 @@
         class="fsmChatScroll">
 
         <VBox id="msgContainer" class="fsmChatMsgContainer" width="100%">
+
+          <!-- Video panel (visible during a call) -->
+          <VBox
+            visible="{= !!${/videoActive} }"
+            class="fsmChatVideoPanel"
+            width="100%">
+            <HBox class="fsmChatVideoStatusRow" alignItems="Center" justifyContent="SpaceBetween">
+              <Text text="{= ${i18n>videoLabel} + ' \u00b7 ' + ${/videoStatusText} }" class="fsmChatVideoStatus" />
+              <Button icon="sap-icon://decline" type="Reject" text="{i18n>endVideo}" press=".onEndVideo" class="fsmChatVideoEndInline" />
+            </HBox>
+            <!-- Dispatcher sees the incoming (remote) stream; technician sees
+                 their own local preview. Both elements exist; the relevant one
+                 gets a stream attached by the controller. -->
+            <core:HTML content="&lt;video id=&quot;remoteVideo&quot; autoplay playsinline class=&quot;fsmChatRemoteVideo&quot;&gt;&lt;/video&gt;"
+              visible="{= ${context>/role} !== 'technician' }" />
+            <core:HTML content="&lt;video id=&quot;localVideo&quot; autoplay playsinline muted class=&quot;fsmChatLocalVideo&quot;&gt;&lt;/video&gt;"
+              visible="{= ${context>/role} === 'technician' }" />
+          </VBox>
+
+          <!-- Incoming call prompt (dispatcher) -->
+          <VBox
+            visible="{= !!${/incomingCall} }"
+            class="fsmChatIncoming"
+            alignItems="Center">
+            <Text text="{i18n>incomingVideo}" class="fsmChatIncomingText" />
+            <HBox class="fsmChatIncomingBtns">
+              <Button text="{i18n>acceptVideo}" type="Accept" icon="sap-icon://video" press=".onAcceptVideo" />
+              <Button text="{i18n>declineVideo}" type="Reject" icon="sap-icon://decline" press=".onDeclineVideo" />
+            </HBox>
+          </VBox>
 
           <!-- Empty thread -->
           <VBox

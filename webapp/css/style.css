@@ -206,3 +206,32 @@ html, body, #content, .sapMShell, .sapMApp {
   font-size: 0.7rem;
   line-height: 1.3;
 }
+
+/* ---- Video call ------------------------------------------------- */
+.fsmChatVideoBtn .sapMBtnInner { min-width: 2.5rem; }
+.fsmChatVideoPanel {
+  background: #000;
+  border-radius: 0.5rem;
+  margin: 0.5rem;
+  overflow: hidden;
+}
+.fsmChatVideoStatusRow {
+  background: rgba(0,0,0,0.85);
+  padding: 0.4rem 0.6rem;
+}
+.fsmChatVideoStatus.sapMText { color: #fff; font-size: 0.8125rem; font-weight: 600; }
+.fsmChatRemoteVideo, .fsmChatLocalVideo {
+  width: 100%;
+  max-height: 60vh;
+  background: #000;
+  display: block;
+}
+.fsmChatIncoming {
+  background: #eef4ff;
+  border: 1px solid #0a6ed1;
+  border-radius: 0.5rem;
+  padding: 1rem;
+  margin: 0.5rem;
+}
+.fsmChatIncomingText.sapMText { font-weight: 600; margin-bottom: 0.5rem; }
+.fsmChatIncomingBtns { gap: 0.5rem; }

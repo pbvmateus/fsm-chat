@@ -76,6 +76,13 @@ sap.ui.define([], function () {
             that._h.onTyping && that._h.onTyping(!!data.typing, data);
           }
           break;
+        case "signal":
+          // WebRTC signaling (offer/answer/candidate/control). Ignore our own
+          // echoes; deliver peer signals to the handler.
+          if (data.from !== that._opts.userId) {
+            that._h.onSignal && that._h.onSignal(data);
+          }
+          break;
         default:
           break;
       }
@@ -113,6 +120,19 @@ sap.ui.define([], function () {
       userName: this._opts.userName,
       typing: bTyping
     });
+  };
+
+  // WebRTC signaling: send an offer/answer/candidate/control message to the room.
+  // `payload` carries { signalType, ... }. We tag from/userName so the peer can
+  // identify the sender and ignore its own echoes.
+  WebSocketTransport.prototype.sendSignal = function (payload) {
+    this._raw(Object.assign({
+      type: "signal",
+      roomId: this._opts.roomId,
+      from: this._opts.userId,
+      fromName: this._opts.userName,
+      fromRole: this._opts.role
+    }, payload));
   };
 
   WebSocketTransport.prototype.disconnect = function () {
@@ -173,12 +193,18 @@ sap.ui.define([], function () {
   };
 
   LocalTransport.prototype._dispatch = function (data) {
-    if (!data || data.userId === this._opts.userId) {
-      // Ignore our own echoes for presence/typing; chat is handled on send.
-      if (data && data.type === "chat" && data.userId === this._opts.userId) {
-        return;
+    if (!data) { return; }
+    // Signaling: ignore our own echoes, deliver peers'.
+    if (data.type === "signal") {
+      if (data.from !== this._opts.userId) {
+        this._h.onSignal && this._h.onSignal(data);
       }
-      if (data && data.type !== "chat") { return; }
+      return;
+    }
+    if (data.userId === this._opts.userId) {
+      // Ignore our own echoes for presence/typing; chat is handled on send.
+      if (data.type === "chat") { return; }
+      if (data.type !== "chat") { return; }
     }
     switch (data.type) {
       case "chat":
@@ -246,6 +272,17 @@ sap.ui.define([], function () {
   };
 
   LocalTransport.prototype.kind = function () { return "local"; };
+
+  // Signaling over BroadcastChannel (same-machine only; real cross-device video
+  // requires the relay). Provided so the API matches WebSocketTransport.
+  LocalTransport.prototype.sendSignal = function (payload) {
+    this._post(Object.assign({
+      type: "signal",
+      from: this._opts.userId,
+      fromName: this._opts.userName,
+      fromRole: this._opts.role
+    }, payload));
+  };
 
   // ---- Factory -------------------------------------------------------------
   //

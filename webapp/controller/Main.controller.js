@@ -1,8 +1,10 @@
 sap.ui.define([
   "sap/ui/core/mvc/Controller",
   "sap/ui/model/json/JSONModel",
-  "com/test/fsmchat/model/ChatTransport"
-], function (Controller, JSONModel, ChatTransport) {
+  "com/test/fsmchat/model/ChatTransport",
+  "com/test/fsmchat/model/VideoCall",
+  "sap/m/MessageToast"
+], function (Controller, JSONModel, ChatTransport, VideoCall, MessageToast) {
   "use strict";
 
   return Controller.extend("com.test.fsmchat.controller.Main", {
@@ -17,7 +19,13 @@ sap.ui.define([
         messages: [],
         draft: "",
         peerTyping: false,
-        manualId: ""
+        manualId: "",
+        // Video call state
+        videoSupported: VideoCall.isSupported(),
+        videoActive: false,
+        videoState: "",        // requesting-camera | calling | connecting | connected | ended | error
+        videoStatusText: "",
+        incomingCall: false    // viewer: a technician is offering video
       });
       this.getView().setModel(this._model);
 
@@ -64,6 +72,7 @@ sap.ui.define([
 
     _teardown: function () {
       if (this._typingStopTimer) { clearTimeout(this._typingStopTimer); }
+      if (this._video) { this._video.hangup(); this._video = null; }
       if (this._transport) {
         this._transport.disconnect();
         this._transport = null;
@@ -99,6 +108,11 @@ sap.ui.define([
         role: this._ctxModel.getProperty("/role")
       };
 
+      // A room change ends any active video call.
+      if (this._video) { this._video.hangup(); this._video = null; }
+      this._model.setProperty("/videoActive", false);
+      this._model.setProperty("/incomingCall", false);
+
       this._setConn("connecting");
 
       var that = this;
@@ -107,7 +121,8 @@ sap.ui.define([
         onClose: function () { that._setConn("offline"); },
         onMessage: function (m) { that._onIncoming(m); },
         onPresence: function (p) { that._onPresence(p); },
-        onTyping: function (b) { that._onPeerTyping(b); }
+        onTyping: function (b) { that._onPeerTyping(b); },
+        onSignal: function (sig) { that._onSignal(sig); }
       });
       this._transport.connect();
     },
@@ -220,6 +235,127 @@ sap.ui.define([
     _onPeerTyping: function (bTyping) {
       this._model.setProperty("/peerTyping", !!bTyping);
       if (bTyping) { this._scrollToBottom(); }
+    },
+
+    // ===== Video call =====================================================
+
+    _videoStatus: function (sState) {
+      this._model.setProperty("/videoState", sState);
+      var map = {
+        "requesting-camera": "Starting camera\u2026",
+        "calling": "Calling dispatcher\u2026",
+        "connecting": "Connecting\u2026",
+        "connected": "Live",
+        "disconnected": "Reconnecting\u2026",
+        "ended": "Call ended",
+        "error": "Video error",
+        "failed": "Connection failed (may need TURN)"
+      };
+      this._model.setProperty("/videoStatusText", map[sState] || sState);
+      if (sState === "ended" || sState === "error") {
+        this._model.setProperty("/videoActive", false);
+        this._model.setProperty("/incomingCall", false);
+      }
+    },
+
+    _makeVideo: function (sCallRole) {
+      var that = this;
+      return new VideoCall({
+        role: sCallRole,
+        transport: this._transport,
+        onState: function (s) { that._videoStatus(s); },
+        onLocalStream: function (stream) { that._attachStream("localVideo", stream, true); },
+        onRemoteStream: function (stream) { that._attachStream("remoteVideo", stream, false); },
+        onError: function (err) {
+          that._videoStatus("error");
+          if (that._video) {
+            MessageToast.show("Video: " + (err && err.message ? err.message : "failed"));
+          }
+        }
+      });
+    },
+
+    // Technician taps "Share video".
+    onStartVideo: function () {
+      if (!this._transport) { return; }
+      if (this._video) { this._video.hangup(); }
+      this._model.setProperty("/videoActive", true);
+      this._video = this._makeVideo("caller");
+      this._video.startAsCaller();
+    },
+
+    // Dispatcher accepts an incoming share.
+    onAcceptVideo: function () {
+      this._model.setProperty("/incomingCall", false);
+      this._model.setProperty("/videoActive", true);
+      // Viewer was already created when the offer arrived; if the offer is
+      // queued, replay it.
+      if (this._video && this._pendingOffer) {
+        this._video.handleSignal(this._pendingOffer);
+        this._pendingOffer = null;
+      }
+    },
+
+    onDeclineVideo: function () {
+      this._model.setProperty("/incomingCall", false);
+      this._pendingOffer = null;
+      if (this._video) { this._video.hangup(); this._video = null; }
+    },
+
+    onEndVideo: function () {
+      if (this._video) { this._video.hangup(); this._video = null; }
+      this._model.setProperty("/videoActive", false);
+      this._model.setProperty("/incomingCall", false);
+    },
+
+    _onSignal: function (sig) {
+      var that = this;
+      // Viewer side: an offer means a technician wants to share video.
+      if (sig.signalType === "offer") {
+        // Only the dispatcher/viewer should handle offers.
+        if (this._ctxModel.getProperty("/role") === "technician") { return; }
+        if (!this._video) { this._video = this._makeVideo("viewer"); }
+        // Prompt the dispatcher to accept; queue the offer until they do.
+        this._pendingOffer = sig;
+        this._model.setProperty("/incomingCall", true);
+        // Auto-accept so the stream shows immediately; comment out the next
+        // two lines if you want an explicit accept tap instead.
+        this._model.setProperty("/incomingCall", false);
+        this._model.setProperty("/videoActive", true);
+        this._video.handleSignal(sig);
+        this._pendingOffer = null;
+        return;
+      }
+      // All other signals (answer/candidate/hangup) go to the active call.
+      if (this._video) {
+        if (sig.signalType === "hangup") {
+          this._model.setProperty("/videoActive", false);
+          this._model.setProperty("/incomingCall", false);
+        }
+        this._video.handleSignal(sig);
+      }
+    },
+
+    _attachStream: function (sVideoId, stream, bMuted) {
+      var that = this;
+      // The <video> element lives inside an HTML control; attach via DOM after
+      // render. Retry briefly since the element may not be in the DOM yet.
+      var tries = 0;
+      function attach() {
+        var el = document.getElementById(that.getView().getId() + "--" + sVideoId);
+        if (!el) {
+          // Try the raw id too (HTML control content id).
+          el = document.getElementById(sVideoId);
+        }
+        if (el) {
+          try { el.srcObject = stream; } catch (e) { el.src = URL.createObjectURL(stream); }
+          el.muted = !!bMuted;
+          el.play && el.play().catch(function () { /* autoplay may defer */ });
+          return;
+        }
+        if (tries++ < 20) { setTimeout(attach, 100); }
+      }
+      attach();
     },
 
     _scrollToBottom: function () {
