@@ -71,9 +71,25 @@ sap.ui.define([], function () {
     // Build marker — lets us confirm which bundle is actually live. If you do
     // NOT see this line in the debug box, you are running a stale/cached build
     // and need to hard-refresh / wait for the GitHub Pages deploy to finish.
-    var BUILD = "fsm-chat build viewstate-3";
+    var BUILD = "fsm-chat build mobile-1";
     if (this._debug) {
       this._rawLog.push("=== " + BUILD + " — selection listener arming ===");
+
+      // Environment dump — critical for the MOBILE investigation. The mobile
+      // web container may deliver the activity via URL params or a JS bridge
+      // rather than postMessage, so record what's present on load.
+      try {
+        var bF = (window.parent && window.parent !== window);
+        this._rawLog.push("env: framed=" + bF +
+          " | url=" + (window.location ? window.location.href : "?"));
+        // Look for FSM-ish globals a native webview might inject.
+        var globals = [];
+        ["FSMShell", "FSM_MOBILE_BRIDGE", "SAP_FSM_SHELL_SDK",
+         "cordova", "webkit", "ReactNativeWebView", "Android"].forEach(
+          function (g) { if (typeof window[g] !== "undefined") { globals.push(g); } });
+        this._rawLog.push("globals present: " +
+          (globals.length ? globals.join(", ") : "(none)"));
+      } catch (envErr) { /* noop */ }
     }
 
     // DEBUG: capture EVERY message the host posts to this iframe, regardless
@@ -117,10 +133,18 @@ sap.ui.define([], function () {
     this._viewStateListener = function (e) {
       that._handleSelectionMessage(e, "primary");
     };
-    if (window.parent && window.parent !== window) {
+    // Arm when framed (shell iframe) OR in debug mode. Mobile web containers
+    // may load at the top level (not in an iframe); without this, a non-framed
+    // webview would silently ignore any selection the mobile host posts. The
+    // handler only reacts to SET_VIEW_STATE messages, so arming it broadly is
+    // harmless if nothing relevant arrives.
+    var bFramed = window.parent && window.parent !== window;
+    if (bFramed || this._debug) {
       window.addEventListener("message", this._viewStateListener, false);
-    } else if (this._debug) {
-      this._rawLog.push("Not inside an iframe — selection listener not armed.");
+      if (this._debug && !bFramed) {
+        this._rawLog.push("Top-level (not iframed) — selection listener armed " +
+          "anyway for capture. If mobile, watch for any activity-bearing message.");
+      }
     }
 
     // --- SDK init for IDENTITY (separate, allowed to fail independently) ----
