@@ -188,3 +188,20 @@ html, body, #content, .sapMShell, .sapMApp {
 .fsmChatBindInput {
   margin-right: 0.25rem;
 }
+
+/* ---- Debug log panel (only with &debug=1) ------------------------ */
+.fsmChatDebugBox {
+  margin-top: 1.5rem;
+  max-width: 32rem;
+}
+.fsmChatDebugTitle.sapMText {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--sapContent_LabelColor, #6a6d70);
+  margin-bottom: 0.25rem;
+}
+.fsmChatDebugLog textarea.sapMTextAreaInner {
+  font-family: monospace;
+  font-size: 0.7rem;
+  line-height: 1.3;
+}

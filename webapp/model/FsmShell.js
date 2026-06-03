@@ -64,8 +64,48 @@ sap.ui.define([], function () {
    */
   FsmShell.prototype.init = function (opts, onContext, onSelection) {
     this._selectionCallback = onSelection || null;
+    this._debug = !!(opts && opts.debug);
+    this._rawLog = [];
+
+    // DEBUG: capture EVERY message the host posts to this iframe, regardless
+    // of whether the SDK library recognises it. This is the ground truth for
+    // "what does the Shell actually send when an activity is selected".
+    if (this._debug) {
+      var self = this;
+      this._rawListener = function (e) {
+        var entry;
+        try {
+          entry = (typeof e.data === "string") ? e.data : JSON.stringify(e.data);
+        } catch (x) {
+          entry = String(e.data);
+        }
+        var line = "[" + (e.origin || "?") + "] " + entry;
+        self._rawLog.push(line);
+        if (self._rawLog.length > 50) { self._rawLog.shift(); }
+        window.__FSM_CHAT_RAWLOG__ = self._rawLog;
+        if (typeof self._onDebug === "function") {
+          self._onDebug(self._rawLog.slice());
+        }
+        // Also try to extract an id from ANY inbound message in debug mode,
+        // so we can see whether the data is present even if its event name
+        // isn't one we subscribed to.
+        try {
+          var maybe = self._extractId(
+            (typeof e.data === "string") ? JSON.parse(e.data) : e.data);
+          if (maybe) {
+            self._rawLog.push("  -> extractId found: " + maybe);
+          }
+        } catch (x2) { /* not JSON / no id */ }
+      };
+      window.addEventListener("message", this._rawListener, false);
+      window.__FSM_CHAT_RAWLOG__ = this._rawLog;
+    }
 
     if (!this.isAvailable()) {
+      if (this._debug) {
+        this._rawLog.push("isAvailable()=false — not running inside Shell, " +
+          "or fsm-shell library not loaded.");
+      }
       onContext && onContext(null);
       return;
     }
@@ -81,6 +121,7 @@ sap.ui.define([], function () {
       this._sdk = ShellSdk.init(window.parent, "*");
       this._inited = true;
     } catch (e) {
+      if (this._debug) { this._rawLog.push("ShellSdk.init threw: " + e.message); }
       onContext && onContext(null);
       return;
     }
@@ -98,6 +139,19 @@ sap.ui.define([], function () {
           ctx = (typeof payload === "string") ? JSON.parse(payload) : payload;
         } catch (parseErr) {
           ctx = null;
+        }
+
+        if (that._debug) {
+          var keys = ctx && typeof ctx === "object"
+            ? Object.keys(ctx).join(", ") : "(none)";
+          that._rawLog.push("REQUIRE_CONTEXT keys: " + keys);
+          if (ctx && ctx.data) {
+            that._rawLog.push("  context.data keys: " +
+              Object.keys(ctx.data).join(", "));
+          }
+          if (typeof that._onDebug === "function") {
+            that._onDebug(that._rawLog.slice());
+          }
         }
 
         // First emit: hand identity/company up to the caller and wire the
@@ -218,6 +272,15 @@ sap.ui.define([], function () {
         null;
     }
     return null;
+  };
+
+  /**
+   * Register a callback to receive the running raw-message debug log.
+   * Only meaningful when init was called with { debug: true }.
+   */
+  FsmShell.prototype.onDebug = function (fn) {
+    this._onDebug = fn;
+    if (this._rawLog && fn) { fn(this._rawLog.slice()); }
   };
 
   /**

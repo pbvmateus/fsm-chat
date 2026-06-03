@@ -91,6 +91,8 @@ sap.ui.define([
       var sObjectId = pick("objectId",
         pick("serviceCallId", pick("activityId", "")));
 
+      var bDebug = pick("debug", "") === "1" || pick("debug", "") === "true";
+
       return {
         client: sClient,
         role: sRole,
@@ -103,7 +105,9 @@ sap.ui.define([
         // UI state flags
         _bound: !!sObjectId,
         _contextSource: sObjectId ? "param" : "none",
-        _shellReady: false
+        _shellReady: false,
+        _debug: bDebug,
+        _debugLog: ""
       };
     },
 
@@ -115,16 +119,25 @@ sap.ui.define([
     _resolveViaShell: function () {
       var that = this;
       var oModel = this._contextModel;
+      var bDebug = oModel.getProperty("/_debug");
 
       this._shell = new FsmShell();
 
-      if (!this._shell.isAvailable()) {
+      // In debug mode, surface the raw log even if we're "not in Shell",
+      // so the user can see WHY (e.g. isAvailable=false).
+      if (bDebug) {
+        this._shell.onDebug(function (aLines) {
+          oModel.setProperty("/_debugLog", aLines.join("\n"));
+        });
+      }
+
+      if (!this._shell.isAvailable() && !bDebug) {
         // Standalone (e.g. GitHub Pages) — nothing to do.
         return;
       }
 
       this._shell.init(
-        { clientIdentifier: "fsm-chat-extension" },
+        { clientIdentifier: "fsm-chat-extension", debug: bDebug },
         function onContext(ctx) {
           oModel.setProperty("/_shellReady", true);
           if (!ctx) { return; }

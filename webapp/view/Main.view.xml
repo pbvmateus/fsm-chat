@@ -63,6 +63,21 @@
             press=".onBindManual"
             class="fsmChatBindBtn" />
         </HBox>
+
+        <!-- DEBUG: shows raw Shell messages when launched with &debug=1 -->
+        <VBox
+          visible="{= !!${context>/_debug} }"
+          class="fsmChatDebugBox"
+          width="100%">
+          <Text text="{i18n>debugHeader}" class="fsmChatDebugTitle" />
+          <TextArea
+            value="{context>/_debugLog}"
+            editable="false"
+            growing="false"
+            rows="10"
+            width="100%"
+            class="fsmChatDebugLog" />
+        </VBox>
       </VBox>
 
       <!-- ============ BOUND STATE: the chat ============ -->
