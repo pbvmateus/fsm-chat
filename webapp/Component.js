@@ -191,6 +191,17 @@ sap.ui.define([
       oModel.setProperty("/_bound", true);
       oModel.setProperty("/_contextSource", sSource || "manual");
 
+      // DEBUG: confirm the Component received the selection and flipped the
+      // flag. If you see this line but the panel stays, the view is bound to a
+      // different model instance than the one being mutated here.
+      if (oModel.getProperty("/_debug")) {
+        var prev = oModel.getProperty("/_debugLog") || "";
+        oModel.setProperty("/_debugLog",
+          prev + "\n  -> Component bound room=" + sRoom +
+          " (_bound=" + oModel.getProperty("/_bound") + ", src=" +
+          (sSource || "manual") + ")");
+      }
+
       // Notify the running controller so it can (re)connect the transport.
       this.fireEvent("activityBound", { roomId: sRoom });
     },
