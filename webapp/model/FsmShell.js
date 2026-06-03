@@ -66,10 +66,10 @@ sap.ui.define([], function () {
     this._selectionCallback = onSelection || null;
     this._debug = !!(opts && opts.debug);
     this._rawLog = [];
+    var that = this;
 
     // DEBUG: capture EVERY message the host posts to this iframe, regardless
-    // of whether the SDK library recognises it. This is the ground truth for
-    // "what does the Shell actually send when an activity is selected".
+    // of whether the SDK library recognises it.
     if (this._debug) {
       var self = this;
       this._rawListener = function (e) {
@@ -86,9 +86,6 @@ sap.ui.define([], function () {
         if (typeof self._onDebug === "function") {
           self._onDebug(self._rawLog.slice());
         }
-        // Also try to extract an id from ANY inbound message in debug mode,
-        // so we can see whether the data is present even if its event name
-        // isn't one we subscribed to.
         try {
           var maybe = self._extractId(
             (typeof e.data === "string") ? JSON.parse(e.data) : e.data);
@@ -101,11 +98,72 @@ sap.ui.define([], function () {
       window.__FSM_CHAT_RAWLOG__ = this._rawLog;
     }
 
+    // --- PRIMARY selection channel (confirmed via live debug capture) ------
+    // The dispatching-board activity sidebar pushes the selected activity as a
+    // raw postMessage of type "V1.SET_VIEW_STATE" with key "activityID":
+    //   {"type":"V1.SET_VIEW_STATE","value":{"key":"activityID","value":"<id>"}}
+    // It also emits key "selectedSidebar" -> { id: "ACTIVITY:<id>" }.
+    //
+    // CRITICAL: this listener is installed UNCONDITIONALLY and does NOT depend
+    // on the fsm-shell SDK library being loaded. Selection arrives as a plain
+    // window 'message' from the Shell host; gating it behind the SDK (or behind
+    // isAvailable()) would silently disable auto-binding whenever the CDN
+    // library is slow/blocked. We only need to be inside an iframe.
+    this._viewStateListener = function (e) {
+      var data = e.data;
+      try {
+        if (typeof data === "string") { data = JSON.parse(data); }
+      } catch (x) { return; }
+      if (!data || typeof data !== "object") { return; }
+
+      var type = data.type || "";
+      if (type.indexOf("SET_VIEW_STATE") === -1) { return; }
+
+      var payload = data.value || {};
+      var key = payload.key;
+      var val = payload.value;
+      if (val == null) { return; }
+
+      var sId = null;
+      if (key === "activityID" || key === "activityId") {
+        sId = (typeof val === "string") ? val : that._extractId(val);
+      } else if (key === "selectedSidebar") {
+        var rawId = (val && val.id) ? val.id : that._extractId(val);
+        if (rawId && typeof rawId === "string") {
+          var idx = rawId.indexOf(":");
+          sId = idx >= 0 ? rawId.slice(idx + 1) : rawId;
+        }
+      }
+
+      if (sId) {
+        if (that._debug) {
+          that._rawLog.push("  -> BOUND activity: " + sId);
+          if (typeof that._onDebug === "function") {
+            that._onDebug(that._rawLog.slice());
+          }
+        }
+        that._deliverSelection(sId);
+      }
+    };
+    if (window.parent && window.parent !== window) {
+      window.addEventListener("message", this._viewStateListener, false);
+    } else if (this._debug) {
+      this._rawLog.push("Not inside an iframe — selection listener not armed.");
+    }
+
+    // --- SDK init for IDENTITY (separate, allowed to fail independently) ----
+    // If the fsm-shell library isn't loaded we skip the SDK handshake but the
+    // selection listener above is already armed, so auto-binding still works.
     if (!this.isAvailable()) {
       if (this._debug) {
-        this._rawLog.push("isAvailable()=false — not running inside Shell, " +
-          "or fsm-shell library not loaded.");
+        this._rawLog.push("isAvailable()=false — fsm-shell SDK not loaded; " +
+          "identity will use fallbacks, but activity auto-bind is still active.");
+        if (typeof this._onDebug === "function") {
+          this._onDebug(this._rawLog.slice());
+        }
       }
+      // Still report "no context" so identity falls back, but DO NOT return
+      // before the selection listener (already installed above).
       onContext && onContext(null);
       return;
     }
@@ -114,8 +172,6 @@ sap.ui.define([], function () {
     var ShellSdk = FSMShell.ShellSdk;
     var SHELL_EVENTS = FSMShell.SHELL_EVENTS;
     this._SHELL_EVENTS = SHELL_EVENTS;
-
-    var that = this;
 
     try {
       this._sdk = ShellSdk.init(window.parent, "*");
@@ -208,12 +264,28 @@ sap.ui.define([], function () {
    */
   FsmShell.prototype._extractActivityFromContext = function (ctx) {
     if (!ctx || typeof ctx !== "object") { return null; }
-    // Most specific first: a nested data envelope.
+
+    // Initial selection (if any) is carried in the REQUIRE_CONTEXT payload at
+    // viewState.selectedSidebar.id, formatted as "ACTIVITY:<id>". At load this
+    // is usually "" (nothing selected yet); live changes come via
+    // SET_VIEW_STATE (see the window listener in init).
+    if (ctx.viewState && ctx.viewState.selectedSidebar &&
+        ctx.viewState.selectedSidebar.id) {
+      var raw = ctx.viewState.selectedSidebar.id;
+      if (typeof raw === "string" && raw.length) {
+        var idx = raw.indexOf(":");
+        return idx >= 0 ? raw.slice(idx + 1) : raw;
+      }
+    }
+    if (ctx.viewState && ctx.viewState.activityID) {
+      return ctx.viewState.activityID;
+    }
+
+    // Other observed/documented shapes.
     if (ctx.data) {
       var fromData = this._extractId(ctx.data);
       if (fromData) { return fromData; }
     }
-    // Top-level selection fields some hosts include directly on context.
     return ctx.activityId || ctx.serviceCallId || ctx.selectedActivityId ||
       ctx.selectedActivity || ctx.objectId || null;
   };
@@ -272,6 +344,20 @@ sap.ui.define([], function () {
         null;
     }
     return null;
+  };
+
+  /**
+   * Remove window listeners. Call on component/controller exit.
+   */
+  FsmShell.prototype.destroy = function () {
+    if (this._viewStateListener) {
+      window.removeEventListener("message", this._viewStateListener, false);
+      this._viewStateListener = null;
+    }
+    if (this._rawListener) {
+      window.removeEventListener("message", this._rawListener, false);
+      this._rawListener = null;
+    }
   };
 
   /**

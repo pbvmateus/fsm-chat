@@ -38,7 +38,6 @@ sap.ui.define([
 
     init: function () {
       UIComponent.prototype.init.apply(this, arguments);
-
       this.setModel(new JSONModel(Device), "device");
 
       // Seed context from URL / startup params synchronously so the UI can
@@ -52,6 +51,12 @@ sap.ui.define([
 
       // Kick off async Shell resolution (no-op when running standalone).
       this._resolveViaShell();
+    },
+
+    exit: function () {
+      if (this._shell && typeof this._shell.destroy === "function") {
+        this._shell.destroy();
+      }
     },
 
     /**
@@ -131,8 +136,13 @@ sap.ui.define([
         });
       }
 
-      if (!this._shell.isAvailable() && !bDebug) {
-        // Standalone (e.g. GitHub Pages) — nothing to do.
+      // Arm the Shell integration whenever we're inside an iframe (i.e.
+      // embedded in FSM). The selection listener does NOT require the fsm-shell
+      // SDK library to have loaded, so we must NOT gate init() on isAvailable().
+      // Only skip when genuinely standalone (opened directly, not framed).
+      var bFramed = window.parent && window.parent !== window;
+      if (!bFramed && !bDebug) {
+        // Standalone (e.g. GitHub Pages opened directly) — nothing to wire.
         return;
       }
 
