@@ -85,22 +85,38 @@ sap.ui.define([], function () {
       return;
     }
 
-    // --- 1. Listen for the context response BEFORE emitting the request. ---
-    var contextHandled = false;
+    // --- 1. Listen for context responses BEFORE emitting the request. ---
+    // IMPORTANT: for a context-bound outlet (e.g. the dispatching-board
+    // activity sidebar), the Shell re-emits REQUIRE_CONTEXT every time the
+    // dispatcher selects a different activity. We must therefore handle EVERY
+    // emit, not just the first — the selected activity travels in this payload.
+    var firstContextSeen = false;
     try {
       this._sdk.on(SHELL_EVENTS.Version1.REQUIRE_CONTEXT, function (payload) {
-        if (contextHandled) { return; }
-        contextHandled = true;
         var ctx = null;
         try {
           ctx = (typeof payload === "string") ? JSON.parse(payload) : payload;
         } catch (parseErr) {
           ctx = null;
         }
-        onContext && onContext(ctx);
 
-        // After context is in, wire selection listeners.
-        that._wireSelectionListeners();
+        // First emit: hand identity/company up to the caller and wire the
+        // secondary selection channels.
+        if (!firstContextSeen) {
+          firstContextSeen = true;
+          onContext && onContext(ctx);
+          that._wireSelectionListeners();
+        }
+
+        // Every emit (including the first): try to pull the selected
+        // activity / service call id out of the context payload itself.
+        // The dispatching board places it here under one of these shapes.
+        if (ctx) {
+          var sId = that._extractActivityFromContext(ctx);
+          if (sId) {
+            that._deliverSelection(sId);
+          }
+        }
       });
     } catch (e) {
       onContext && onContext(null);
@@ -117,17 +133,44 @@ sap.ui.define([], function () {
         clientIdentifier: (opts && opts.clientIdentifier) || "fsm-chat-extension"
       });
     } catch (e) {
-      if (!contextHandled) { onContext && onContext(null); }
+      if (!firstContextSeen) { onContext && onContext(null); }
     }
 
     // Safety: if the host never answers, don't hang forever.
     setTimeout(function () {
-      if (!contextHandled) {
-        contextHandled = true;
+      if (!firstContextSeen) {
+        firstContextSeen = true;
         onContext && onContext(null);
         that._wireSelectionListeners();
       }
     }, 4000);
+  };
+
+  /**
+   * Pull a selected activity / service-call id out of a REQUIRE_CONTEXT
+   * payload. The dispatching-board outlet exposes the current selection on
+   * the context object; observed/ documented shapes include a nested `data`
+   * object (event.data.activityId) and top-level selection fields.
+   */
+  FsmShell.prototype._extractActivityFromContext = function (ctx) {
+    if (!ctx || typeof ctx !== "object") { return null; }
+    // Most specific first: a nested data envelope.
+    if (ctx.data) {
+      var fromData = this._extractId(ctx.data);
+      if (fromData) { return fromData; }
+    }
+    // Top-level selection fields some hosts include directly on context.
+    return ctx.activityId || ctx.serviceCallId || ctx.selectedActivityId ||
+      ctx.selectedActivity || ctx.objectId || null;
+  };
+
+  /**
+   * Centralised, de-duplicated delivery of a selected id to the caller.
+   */
+  FsmShell.prototype._deliverSelection = function (id) {
+    if (!id || String(id) === String(this._lastSelectedId)) { return; }
+    this._lastSelectedId = id;
+    this._selectionCallback && this._selectionCallback(String(id));
   };
 
   /**
@@ -139,12 +182,6 @@ sap.ui.define([], function () {
     var that = this;
     var SHELL_EVENTS = this._SHELL_EVENTS;
 
-    function deliver(id) {
-      if (!id || id === that._lastSelectedId) { return; }
-      that._lastSelectedId = id;
-      that._selectionCallback && that._selectionCallback(String(id));
-    }
-
     // (a) ViewState keys. Documented as restricted for extensions (may throw),
     //     but cheap to attempt — some host/version combos still emit these.
     var viewStateKeys = ["ACTIVITY", "SERVICECALL", "SERVICE_CALL",
@@ -154,7 +191,7 @@ sap.ui.define([], function () {
         try {
           that._sdk.onViewState(key, function (val) {
             // val may be an id string or an object holding one.
-            deliver(that._extractId(val));
+            that._deliverSelection(that._extractId(val));
           });
         } catch (e) { /* restricted — ignore */ }
       });
@@ -164,7 +201,7 @@ sap.ui.define([], function () {
     try {
       this._sdk.on(SHELL_EVENTS.Version1.TO_APP, function (content) {
         if (!content) { return; }
-        deliver(that._extractId(content));
+        that._deliverSelection(that._extractId(content));
       });
     } catch (e) { /* noop */ }
   };
