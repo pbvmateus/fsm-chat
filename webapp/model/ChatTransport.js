@@ -122,6 +122,8 @@ sap.ui.define([], function () {
     }
   };
 
+  WebSocketTransport.prototype.kind = function () { return "relay"; };
+
   // ---- Local transport (no backend) ---------------------------------------
   function LocalTransport(oOpts, oHandlers) {
     this._opts = oOpts;
@@ -243,15 +245,38 @@ sap.ui.define([], function () {
     }
   };
 
+  LocalTransport.prototype.kind = function () { return "local"; };
+
   // ---- Factory -------------------------------------------------------------
+  //
+  // Transport selection:
+  //   ?ws=wss://host   -> use that relay (explicit override)
+  //   ?ws=local        -> force same-machine BroadcastChannel (testing only)
+  //   (nothing)        -> use DEFAULT_RELAY below
+  //
+  // WHY A HARDCODED DEFAULT: the FSM mobile Web Container loads the app via a
+  // POST→redirect, and the embedded webview was observed to NOT carry the `ws=`
+  // query param through reliably. When `ws=` is lost, the app would fall back to
+  // BroadcastChannel, which only connects same-machine — so a phone and a laptop
+  // never meet (each shows "online" against an empty local channel). Baking the
+  // relay URL in removes that fragile dependency: cross-device works even if the
+  // webview strips every query param. Update DEFAULT_RELAY if you redeploy the
+  // relay to a different host.
+  var DEFAULT_RELAY = "wss://fsm-chat-relay.onrender.com";
+
   return {
     create: function (oOpts, oHandlers) {
       var params = new URLSearchParams(window.location.search);
       var wsUrl = params.get("ws");
-      if (wsUrl) {
-        return new WebSocketTransport(wsUrl, oOpts, oHandlers);
+
+      // Explicit opt-out for local same-machine testing.
+      if (wsUrl === "local" || wsUrl === "none" || wsUrl === "bc") {
+        return new LocalTransport(oOpts, oHandlers);
       }
-      return new LocalTransport(oOpts, oHandlers);
+
+      // Explicit relay override, else the baked-in default relay.
+      var relay = (wsUrl && wsUrl.indexOf("ws") === 0) ? wsUrl : DEFAULT_RELAY;
+      return new WebSocketTransport(relay, oOpts, oHandlers);
     },
     nowISO: nowISO
   };

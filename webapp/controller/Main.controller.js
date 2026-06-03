@@ -137,7 +137,16 @@ sap.ui.define([
       var cfg = map[sState] || map.offline;
       oCtx.setProperty("/_connState", cfg.state);
       oCtx.setProperty("/_connIcon", cfg.icon);
-      oCtx.setProperty("/_connText", cfg.text);
+
+      // Append the transport kind so it's unambiguous what's actually in use,
+      // visible even when connected. "Online · relay" = cross-device works;
+      // "Online · local" = same-machine only (relay not in use).
+      var sText = cfg.text;
+      if (sState === "online" && this._transport &&
+          typeof this._transport.kind === "function") {
+        sText = cfg.text + " \u00b7 " + this._transport.kind();
+      }
+      oCtx.setProperty("/_connText", sText);
     },
 
     onTyping: function () {
