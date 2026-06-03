@@ -96,6 +96,16 @@
 
         <VBox id="msgContainer" class="fsmChatMsgContainer" width="100%">
 
+          <!-- DIAGNOSTIC: visible activity id + source, for comparing both
+               sides. Rendered in the body (dark on light) so it's always
+               visible regardless of header styling. Remove once delivery is
+               confirmed working. -->
+          <VBox class="fsmChatDiag" width="100%">
+            <Text text="{= 'ACTIVITY: ' + (${context>/objectId} ? ${context>/objectId} : '(NONE)') }" class="fsmChatDiagText" />
+            <Text text="{= 'ROOM: ' + (${context>/_room} ? ${context>/_room} : '(none)') }" class="fsmChatDiagText" />
+            <Text text="{= 'SRC: ' + (${context>/_contextSource} ? ${context>/_contextSource} : '?') + ' | ROLE: ' + (${context>/role} ? ${context>/role} : '?') + ' | CLIENT: ' + (${context>/client} ? ${context>/client} : '?') }" class="fsmChatDiagText" />
+          </VBox>
+
           <!-- Empty thread -->
           <VBox
             id="emptyState"

@@ -95,6 +95,12 @@ sap.ui.define([
       // it asynchronously).
       var sObjectId = pick("objectId",
         pick("serviceCallId", pick("activityId", "")));
+      // Normalize case: FSM delivers the activity guid in different cases via
+      // different channels (mobile cloudId is lowercase, shell SET_VIEW_STATE
+      // is uppercase). The room is derived from this id, so without
+      // normalization the two sides compute DIFFERENT rooms and never meet on
+      // the relay. Uppercase is canonical for these hex guids.
+      if (sObjectId) { sObjectId = String(sObjectId).toUpperCase(); }
 
       var bDebug = pick("debug", "") === "1" || pick("debug", "") === "true";
 
@@ -184,6 +190,9 @@ sap.ui.define([
      */
     _bindToActivity: function (sActivityId, sSource) {
       if (!sActivityId) { return; }
+      // Normalize case so shell (uppercase SET_VIEW_STATE) and mobile
+      // (lowercase cloudId) compute the SAME room for the same activity.
+      sActivityId = String(sActivityId).toUpperCase();
       var oModel = this._contextModel;
       var sRoom = "fsm-room-" + sActivityId;
       oModel.setProperty("/objectId", String(sActivityId));
