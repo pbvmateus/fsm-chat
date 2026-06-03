@@ -1,0 +1,18 @@
+# Render Blueprint — deploys the FSM Chat WebSocket relay.
+#
+# In Render: New → Blueprint → connect this repo. Render reads this file and
+# creates the service automatically. (You can also create it manually as a
+# Web Service; see CLOUDFLARE-MOBILE.md / the relay section of the README.)
+#
+# The relay lives in the server/ subfolder, so rootDir points there.
+
+services:
+  - type: web
+    name: fsm-chat-relay
+    runtime: node
+    rootDir: server
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true

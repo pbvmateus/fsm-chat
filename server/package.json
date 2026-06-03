@@ -1,0 +1,15 @@
+{
+  "name": "fsm-chat-relay",
+  "version": "1.0.0",
+  "description": "WebSocket relay for FSM Chat cross-device messaging",
+  "main": "ws-server.js",
+  "scripts": {
+    "start": "node ws-server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

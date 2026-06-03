@@ -1,35 +1,48 @@
 /**
- * Minimal WebSocket relay for FSM Chat.
+ * WebSocket relay for FSM Chat — cross-device message bridge.
  *
- * This is OPTIONAL. The app works with no backend at all (it falls back to
- * a same-machine BroadcastChannel transport). Use this server when you want
- * a real cross-device channel — e.g. technician on a phone and dispatcher on
- * a laptop talking to each other.
+ * This is what lets the technician (phone) and dispatcher (shell/laptop) — two
+ * DIFFERENT devices — actually exchange messages. The in-browser BroadcastChannel
+ * transport only connects tabs on the SAME machine; for real cross-device chat
+ * you need this server in the middle.
  *
- * It simply relays JSON messages to everyone in the same roomId. No storage,
- * no auth — meant for testing only.
+ * It relays JSON messages to everyone in the same roomId. Rooms are derived from
+ * the activity id (roomId = "fsm-room-<activityId>"), so both clients viewing the
+ * same activity meet in the same room.
  *
- * Run:
+ * HOSTING (e.g. Render free tier):
+ *   - Reads PORT from the environment (required by most hosts).
+ *   - Binds 0.0.0.0.
+ *   - GET /health returns "ok" for platform health checks.
+ *   - Sends periodic pings so idle connections aren't dropped (~60s timeouts
+ *     are common on free tiers and would otherwise kill the chat silently).
+ *
+ * SECURITY (test relay): no authentication. Anyone who knows the URL and a room
+ * id can join that room. Fine for testing; for production add auth (e.g. verify
+ * the FSM token) and restrict origins.
+ *
+ * Local run:
  *   npm install ws
  *   node server/ws-server.js
- *
- * Then open the app with:  ?ws=ws://localhost:8088
- * (use wss:// behind TLS in any hosted setup)
+ *   then open the app with ?ws=ws://localhost:8088
+ * Hosted: open the app with ?ws=wss://your-host
  */
 
 const http = require("http");
 const { WebSocketServer } = require("ws");
 
 const PORT = process.env.PORT || 8088;
+const HOST = "0.0.0.0";
 
 const server = http.createServer((req, res) => {
-  if (req.url === "/health") {
+  // Health check + a friendly root response.
+  if (req.url === "/health" || req.url === "/healthz") {
     res.writeHead(200, { "Content-Type": "text/plain" });
     res.end("ok");
     return;
   }
   res.writeHead(200, { "Content-Type": "text/plain" });
-  res.end("FSM Chat WS relay. Connect via WebSocket.");
+  res.end("FSM Chat WS relay is running. Connect via WebSocket (use wss:// in browsers).");
 });
 
 const wss = new WebSocketServer({ server });
@@ -51,6 +64,10 @@ function leaveRoom(ws) {
   }
 }
 
+function roomSize(roomId) {
+  return rooms.has(roomId) ? rooms.get(roomId).size : 0;
+}
+
 function broadcast(roomId, data, exclude) {
   const peers = rooms.get(roomId);
   if (!peers) return;
@@ -63,6 +80,9 @@ function broadcast(roomId, data, exclude) {
 }
 
 wss.on("connection", (ws) => {
+  ws.isAlive = true;
+  ws.on("pong", () => { ws.isAlive = true; });
+
   ws.on("message", (raw) => {
     let msg;
     try {
@@ -74,8 +94,17 @@ wss.on("connection", (ws) => {
 
     if (msg.type === "join") {
       joinRoom(roomId, ws);
-      // Tell existing peers someone joined, and tell the newcomer who's here.
-      broadcast(roomId, { type: "presence", ...msg, online: true }, ws);
+      // Tell existing peers someone joined.
+      broadcast(roomId, { type: "presence", roomId: roomId,
+        userId: msg.userId, userName: msg.userName, role: msg.role,
+        online: true }, ws);
+      // Tell the newcomer how many peers are already here, so its status can
+      // reflect a real peer (not just "channel open").
+      try {
+        ws.send(JSON.stringify({ type: "presence", roomId: roomId,
+          online: roomSize(roomId) > 1, peerCount: roomSize(roomId) - 1,
+          self: true }));
+      } catch (e) { /* noop */ }
       return;
     }
 
@@ -89,7 +118,8 @@ wss.on("connection", (ws) => {
     const roomId = ws._roomId;
     leaveRoom(ws);
     if (roomId) {
-      broadcast(roomId, { type: "presence", roomId, online: false });
+      broadcast(roomId, { type: "presence", roomId: roomId, online: false,
+        peerCount: roomSize(roomId) });
     }
   });
 
@@ -98,6 +128,21 @@ wss.on("connection", (ws) => {
   });
 });
 
-server.listen(PORT, () => {
-  console.log(`FSM Chat WS relay listening on :${PORT}`);
+// Keepalive: ping every 30s; terminate sockets that didn't pong (dead).
+// Without this, idle hosts silently drop the connection after ~60s.
+const heartbeat = setInterval(() => {
+  wss.clients.forEach((ws) => {
+    if (ws.isAlive === false) {
+      try { ws.terminate(); } catch (e) { /* noop */ }
+      return;
+    }
+    ws.isAlive = false;
+    try { ws.ping(); } catch (e) { /* noop */ }
+  });
+}, 30000);
+
+wss.on("close", () => clearInterval(heartbeat));
+
+server.listen(PORT, HOST, () => {
+  console.log(`FSM Chat WS relay listening on ${HOST}:${PORT}`);
 });
