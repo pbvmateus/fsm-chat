@@ -18,8 +18,12 @@
           <VBox class="fsmChatHeaderTitleBox">
             <Title text="{i18n>chatTitle}" level="H2" class="fsmChatHeaderTitle" />
             <Text
-              text="{= ${context>/_bound} ? 'room ' + ${context>/_room} : ${context>/_peerLabel} }"
+              text="{= ${context>/_bound} ? 'activity: ' + ${context>/objectId} : ${context>/_peerLabel} }"
               maxLines="2"
+              class="fsmChatHeaderSub" />
+            <Text
+              text="{= ${context>/_bound} ? '(' + ${context>/role} + ' via ' + ${context>/_contextSource} + ')' : '' }"
+              visible="{= !!${context>/_bound} }"
               class="fsmChatHeaderSub" />
           </VBox>
         </contentLeft>
