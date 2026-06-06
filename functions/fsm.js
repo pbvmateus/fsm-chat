@@ -54,22 +54,45 @@ export async function onRequest(context) {
     if (request.method === "POST") {
       // Read raw text first so we can both display and parse it.
       rawBody = await request.text();
-      if (contentType.includes("json")) {
-        parsedKind = "json";
+      // IMPORTANT: do NOT trust the content-type header. FSM mobile was observed
+      // sending a JSON body while declaring content-type form-urlencoded, which
+      // made a header-based parser miss cloudId entirely. Sniff the body instead:
+      // if it looks like JSON, parse JSON; otherwise parse urlencoded.
+      const trimmed = (rawBody || "").trim();
+      const looksJson = trimmed.charAt(0) === "{" || trimmed.charAt(0) === "[";
+      if (looksJson) {
+        parsedKind = "json (sniffed)";
         try {
-          const body = JSON.parse(rawBody);
+          const body = JSON.parse(trimmed);
           cloudId = body.cloudId || (body.data && body.data.cloudId) || null;
-          objectType = body.objectType || null;
+          objectType = body.objectType || (body.data && body.data.objectType) || null;
           userName = body.userName || null;
-        } catch (e) { /* leave nulls */ }
+        } catch (e) {
+          // Fall back to urlencoded if JSON parse fails despite looking like JSON.
+          parsedKind = "urlencoded (json parse failed)";
+          const parsed = new URLSearchParams(rawBody);
+          cloudId = parsed.get("cloudId");
+          objectType = parsed.get("objectType");
+          userName = parsed.get("userName");
+        }
       } else {
-        // urlencoded / form / unknown -> try urlencoded parse
-        parsedKind = "form/urlencoded";
+        parsedKind = "form/urlencoded (sniffed)";
         const parsed = new URLSearchParams(rawBody);
         cloudId = parsed.get("cloudId");
         objectType = parsed.get("objectType");
         userName = parsed.get("userName");
+        // Some FSM payloads nest under data=<json>; try that if still missing.
+        if (!cloudId && parsed.get("data")) {
+          try {
+            const inner = JSON.parse(parsed.get("data"));
+            cloudId = inner.cloudId || null;
+            objectType = inner.objectType || null;
+            userName = inner.userName || userName;
+            parsedKind = "urlencoded->data json";
+          } catch (e) { /* leave nulls */ }
+        }
       }
+      void contentType; // intentionally unused for parsing; kept for diag display
     }
   } catch (err) {
     rawBody = "(error reading body: " + (err && err.message) + ")";
