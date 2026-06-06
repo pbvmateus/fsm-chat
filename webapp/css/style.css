@@ -7,29 +7,26 @@ html, body, #content, .sapMShell, .sapMApp {
 .fsmChatPage .sapMPageEnableScrolling {
   background: var(--sapBackgroundColor, #f5f6f7);
 }
-/* With the header now living inside the page content, lay the content out as
-   a column so the header stays at the top and the chat scroll takes the rest,
-   instead of the chat's height:100% overflowing past the header. */
-.fsmChatPage section,
-.fsmChatPage .sapMPageEnableScrolling {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-.fsmChatHeaderBlock { flex: 0 0 auto; }
-.fsmChatScroll { flex: 1 1 auto; min-height: 0; }
 
-/* ---- Header (in-content block; no fixed-height Bar to clip it) ----- */
+/* ---- Header (in-content block; no fixed-height Bar to clip it) -----
+   Light background + dark text + bottom separator. This is theme-safe: it
+   stays readable whether or not the shell background color applies, avoiding
+   the white-text-on-light (invisible) and dark-text-overlap problems seen in
+   the embedded shell/webview. */
 .fsmChatHeaderBlock {
-  background: var(--sapShellColor, #354a5f);
-  padding: 0.7rem 0.9rem;
+  background: var(--sapList_Background, #ffffff);
+  border-bottom: 1px solid var(--sapList_BorderColor, #e5e5e5);
+  padding: 0.75rem 0.9rem;
   box-sizing: border-box;
+  position: relative;
+  width: 100%;
+  z-index: 1;
 }
 .fsmChatHeaderRow { gap: 0.5rem; }
 .fsmChatHeaderLeft { flex: 1 1 auto; min-width: 0; }
 .fsmChatHeaderRight { flex: 0 0 auto; gap: 0.1rem; }
 .fsmChatHeaderIcon {
-  color: #ffffff;
+  color: var(--sapHighlightColor, #0a6ed1);
   font-size: 1.5rem;
   margin: 0 0.6rem 0 0;
   flex: 0 0 auto;
@@ -39,17 +36,18 @@ html, body, #content, .sapMShell, .sapMApp {
   min-width: 0;
 }
 .fsmChatHeaderTitle.sapMTitle {
-  color: var(--sapShell_TextColor, #ffffff);
-  line-height: 1.2;
+  color: var(--sapTextColor, #32363a);
+  line-height: 1.25;
   font-size: 1.0625rem;
+  font-weight: 700;
 }
 .fsmChatHeaderSub.sapMText {
-  color: var(--sapShell_TextColor, #ffffff);
-  opacity: 0.92;
+  color: var(--sapContent_LabelColor, #6a6d70);
   font-size: 0.85rem;
   line-height: 1.3;
   white-space: normal;          /* allow wrap so the activity id is not clipped */
-  word-break: break-all;
+  word-break: break-word;
+  margin-top: 0.1rem;
 }
 .fsmChatConnStatus {
   margin-left: 0.4rem;
@@ -66,13 +64,11 @@ html, body, #content, .sapMShell, .sapMApp {
 .fsmChatLeaveBtn .sapUiIcon {
   font-size: 1.35rem;
 }
-/* On the dark header, transparent-button icons/text need to be light. */
-.fsmChatHeaderRight .sapMBtnTransparent .sapUiIcon { color: #ffffff; }
-.fsmChatHeaderRight .sapMBtn .sapMBtnContent { color: #ffffff; }
 
 /* ---- Message area ------------------------------------------------- */
 .fsmChatScroll {
   background: var(--sapBackgroundColor, #f5f6f7);
+  min-height: 60vh;
 }
 .fsmChatMsgContainer {
   padding: 0.75rem 0.5rem 1rem;
@@ -195,8 +191,7 @@ html, body, #content, .sapMShell, .sapMApp {
 
 /* ---- Unbound / activity-binding panel ---------------------------- */
 .fsmChatBindPanel {
-  height: 100%;
-  padding: 2rem 1.5rem;
+  padding: 1.5rem 1.5rem 2rem;
   box-sizing: border-box;
   background: var(--sapBackgroundColor, #f5f6f7);
 }

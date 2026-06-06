@@ -69,8 +69,7 @@
         id="bindPanel"
         visible="{= !${context>/_bound} }"
         class="fsmChatBindPanel"
-        alignItems="Center"
-        justifyContent="Center">
+        alignItems="Center">
 
         <!-- Non-dispatcher (technician/tester): manual activity-ID entry. -->
         <VBox
