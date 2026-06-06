@@ -40,14 +40,48 @@ const GENERIC_ROOM = "fsm-generic";
 const GENERIC_MAX = 200;            // cap retained unattended messages
 const GENERIC_TTL_MS = 24 * 60 * 60 * 1000; // drop entries older than 24h
 
+// Bump this when deploying so /rooms confirms the running build is current.
+const BUILD_MARKER = "presence-diag-1";
+// Liveness ping interval (also used by the heartbeat below).
+const HEARTBEAT_MS = 10000;
+
 const server = http.createServer((req, res) => {
   if (req.url === "/health" || req.url === "/healthz") {
     res.writeHead(200, { "Content-Type": "text/plain" });
     res.end("ok");
     return;
   }
+  // Diagnostic: show what the relay currently believes about room membership
+  // and per-socket liveness. Use this to tell a genuinely-gone socket (should
+  // be reaped) from a background socket that is still answering pings.
+  if (req.url === "/rooms") {
+    const now = Date.now();
+    const out = { build: BUILD_MARKER, heartbeatMs: HEARTBEAT_MS,
+      now: new Date(now).toISOString(), rooms: {} };
+    for (const [roomId, set] of rooms) {
+      out.rooms[roomId] = {
+        size: set.size,
+        dispatcherPresent: dispatcherPresent(roomId),
+        technicianPresent: technicianPresent(roomId),
+        members: Array.from(set).map(function (ws) {
+          return {
+            role: ws._role || null,
+            userName: ws._userName || null,
+            userId: ws._userId || null,
+            readyState: ws.readyState,
+            isAlive: ws.isAlive !== false,
+            secsSinceJoin: ws._joinedAt ? Math.round((now - ws._joinedAt) / 1000) : null,
+            secsSincePong: ws._lastPong ? Math.round((now - ws._lastPong) / 1000) : null
+          };
+        })
+      };
+    }
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(out, null, 2));
+    return;
+  }
   res.writeHead(200, { "Content-Type": "text/plain" });
-  res.end("FSM Chat WS relay is running. Connect via WebSocket (use wss:// in browsers).");
+  res.end("FSM Chat WS relay is running (" + BUILD_MARKER + "). Connect via WebSocket (use wss:// in browsers).");
 });
 
 const wss = new WebSocketServer({ server });
@@ -86,7 +120,8 @@ function rolePresent(roomId, role) {
   const set = rooms.get(roomId);
   if (!set) return false;
   for (const peer of set) {
-    if (peer.readyState === peer.OPEN && peer._role === role) return true;
+    if ((peer.readyState === peer.OPEN || peer.readyState === 1) &&
+        peer._role === role) return true;
   }
   return false;
 }
@@ -128,7 +163,8 @@ function activityIdFromRoom(roomId) {
 wss.on("connection", (ws) => {
   ws.isAlive = true;
   ws._role = null;
-  ws.on("pong", () => { ws.isAlive = true; });
+  ws._lastPong = Date.now();
+  ws.on("pong", () => { ws.isAlive = true; ws._lastPong = Date.now(); });
 
   ws.on("message", (raw) => {
     let msg;
@@ -140,6 +176,7 @@ wss.on("connection", (ws) => {
       if (msg.role) ws._role = msg.role;
       if (msg.userId) ws._userId = msg.userId;
       if (msg.userName) ws._userName = msg.userName;
+      if (!ws._joinedAt) ws._joinedAt = Date.now();
       addToRoom(roomId, ws);
 
       // Announce presence to existing peers (include role).
@@ -275,7 +312,6 @@ wss.on("connection", (ws) => {
 // misses a pong it is terminated, which fires 'close' -> room cleanup ->
 // presence re-broadcast, so the other side's "connected" indicator clears
 // within roughly one interval instead of lingering up to a minute.
-const HEARTBEAT_MS = 10000;
 const heartbeat = setInterval(() => {
   let reaped = false;
   wss.clients.forEach((ws) => {
