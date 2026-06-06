@@ -579,13 +579,27 @@ sap.ui.define([
     _scrollToBottom: function () {
       var that = this;
       setTimeout(function () {
-        var oScroll = that.byId("msgScroll");
         var oCont = that.byId("msgContainer");
-        if (oScroll && oCont) {
-          var oDom = oCont.getDomRef();
-          if (oDom) {
-            oScroll.scrollTo(0, oDom.scrollHeight + 200, 200);
+        var oDom = oCont && oCont.getDomRef();
+        if (!oDom) { return; }
+        // The page scrolls as one unit now (header is sticky). Bring the bottom
+        // of the message container into view. Try the nearest scrollable
+        // ancestor, then fall back to scrolling the last child into view.
+        try {
+          var el = oDom.parentNode;
+          while (el && el !== document.body) {
+            var oy = window.getComputedStyle(el).overflowY;
+            if ((oy === "auto" || oy === "scroll") && el.scrollHeight > el.clientHeight) {
+              el.scrollTop = el.scrollHeight;
+              return;
+            }
+            el = el.parentNode;
           }
+        } catch (e) { /* fall through */ }
+        // Fallback: scroll the last message into view.
+        var last = oDom.lastElementChild;
+        if (last && last.scrollIntoView) {
+          last.scrollIntoView({ block: "end" });
         }
       }, 80);
     }

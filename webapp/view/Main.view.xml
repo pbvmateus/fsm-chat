@@ -23,9 +23,25 @@
             <core:Icon src="sap-icon://discussion" class="fsmChatHeaderIcon" />
             <VBox class="fsmChatHeaderTitleBox">
               <Title text="{i18n>chatTitle}" level="H2" class="fsmChatHeaderTitle" />
+              <!-- Line 1: who you're talking to + (technician only) live status. -->
+              <HBox alignItems="Center" class="fsmChatHeaderStatusRow" visible="{= !!${context>/_bound} }">
+                <core:Icon
+                  src="{= ${/isTechnician} ? (${/dispatcherPresent} ? 'sap-icon://connected' : 'sap-icon://pending') : 'sap-icon://employee' }"
+                  class="fsmChatHeaderStatusIcon {= ${/isTechnician} ? (${/dispatcherPresent} ? 'fsmStatLive' : 'fsmStatWait') : 'fsmStatPeer' }" />
+                <Text
+                  class="fsmChatHeaderSub"
+                  text="{= ${/isTechnician} ? (${/dispatcherPresent} ? ${i18n>techDispConnected} : ${i18n>techWaiting}) : ${i18n>hdrTalkingToTech} }" />
+              </HBox>
+              <!-- Line 2: activity id, shown ONCE here (no duplicate banner below). -->
               <Text
-                text="{= ${context>/_bound} ? (${context>/role} === 'dispatcher' ? ${i18n>hdrTalkingToTech} + ' \u00b7 ' + ${i18n>activityLabel} + ' ' + ${/activityCode} : ${i18n>hdrTalkingToDisp} + ' \u00b7 ' + ${i18n>activityLabel} + ' ' + ${/activityCode}) : ${context>/_peerLabel} }"
-                class="fsmChatHeaderSub" />
+                class="fsmChatHeaderActivity"
+                visible="{= !!${context>/_bound} }"
+                text="{= ${i18n>activityLabel} + ' ' + ${/activityCode} }" />
+              <!-- Unbound: show the role label as before. -->
+              <Text
+                class="fsmChatHeaderSub"
+                visible="{= !${context>/_bound} }"
+                text="{context>/_peerLabel}" />
             </VBox>
           </HBox>
           <HBox class="fsmChatHeaderRight" alignItems="Center">
@@ -171,37 +187,16 @@
         </VBox>
       </VBox>
 
-      <!-- ============ BOUND STATE: the chat ============ -->
-      <ScrollContainer
+      <!-- ============ BOUND STATE: the chat ============
+           Plain VBox (page scrolls as one unit) so the sticky header stays
+           frozen at the top while a long conversation scrolls beneath it. -->
+      <VBox
         id="msgScroll"
-        height="100%"
         width="100%"
-        vertical="true"
-        focusable="false"
         visible="{= !!${context>/_bound} }"
         class="fsmChatScroll">
 
         <VBox id="msgContainer" class="fsmChatMsgContainer" width="100%">
-
-          <!-- Technician-facing room/presence label: are we talking to a
-               dispatcher in this activity, or waiting (messages routed to the
-               unattended pool for any dispatcher to pick up)? -->
-          <HBox
-            visible="{= !!${/isTechnician} &amp;&amp; !!${context>/_bound} }"
-            class="fsmChatRoomBanner {= ${/dispatcherPresent} ? 'fsmChatRoomBannerLive' : 'fsmChatRoomBannerWait' }"
-            alignItems="Center">
-            <core:Icon
-              src="{= ${/dispatcherPresent} ? 'sap-icon://connected' : 'sap-icon://pending' }"
-              class="fsmChatRoomBannerIcon" />
-            <VBox>
-              <Text
-                text="{= ${/dispatcherPresent} ? ${i18n>techDispConnected} : ${i18n>techWaiting} }"
-                class="fsmChatRoomBannerTitle" />
-              <Text
-                text="{= (${/dispatcherPresent} ? ${i18n>techDispConnectedSub} : ${i18n>techWaitingSub}) + ' \u00b7 ' + ${i18n>activityLabel} + ' ' + ${/activityCode} }"
-                class="fsmChatRoomBannerSub" />
-            </VBox>
-          </HBox>
 
           <!-- Video panel (visible during a call) -->
           <VBox
@@ -282,7 +277,7 @@
           </HBox>
 
         </VBox>
-      </ScrollContainer>
+      </VBox>
     </content>
 
     <footer>
