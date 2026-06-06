@@ -30,7 +30,7 @@
                   class="fsmChatHeaderStatusIcon {= ${/isTechnician} ? (${/dispatcherPresent} ? 'fsmStatLive' : 'fsmStatWait') : 'fsmStatPeer' }" />
                 <Text
                   class="fsmChatHeaderSub"
-                  text="{= ${/isTechnician} ? (${/dispatcherPresent} ? ${i18n>techDispConnected} : ${i18n>techWaiting}) : ${i18n>hdrTalkingToTech} }" />
+                  text="{= ${/isTechnician} ? (${/dispatcherPresent} ? ${i18n>techDispConnected} : ${i18n>techWaiting}) : (${/peerName} ? ${i18n>hdrTalkingToTech} + ' \u00b7 ' + ${/peerName} : ${i18n>hdrTalkingToTech}) }" />
               </HBox>
               <!-- Line 2: activity id, shown ONCE here (no duplicate banner below). -->
               <Text

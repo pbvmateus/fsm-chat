@@ -45,6 +45,8 @@ sap.ui.define([
         unattendedCount: 0,
         // Technician-facing: is a dispatcher currently in this activity room?
         dispatcherPresent: false,
+        // Name of the other party, learned from their messages/presence.
+        peerName: "",
         // Clean activity id for display in the header / labels.
         activityCode: ""
       });
@@ -144,6 +146,8 @@ sap.ui.define([
       this._model.setProperty("/activityCode", sCode);
       // Reset until the relay tells us whether a dispatcher is present.
       this._model.setProperty("/dispatcherPresent", false);
+      // Reset the learned peer name for the new conversation.
+      this._model.setProperty("/peerName", "");
 
       // Build a fresh per-room context object for the transport.
       var oOpts = {
@@ -358,16 +362,7 @@ sap.ui.define([
       var cfg = map[sState] || map.offline;
       oCtx.setProperty("/_connState", cfg.state);
       oCtx.setProperty("/_connIcon", cfg.icon);
-
-      // Append the transport kind so it's unambiguous what's actually in use,
-      // visible even when connected. "Online · relay" = cross-device works;
-      // "Online · local" = same-machine only (relay not in use).
-      var sText = cfg.text;
-      if (sState === "online" && this._transport &&
-          typeof this._transport.kind === "function") {
-        sText = cfg.text + " \u00b7 " + this._transport.kind();
-      }
-      oCtx.setProperty("/_connText", sText);
+      oCtx.setProperty("/_connText", cfg.text);
     },
 
     onTyping: function () {
@@ -408,6 +403,12 @@ sap.ui.define([
         var existing = this._model.getProperty("/messages")
           .some(function (m) { return m.msgId === oMsg.msgId; });
         if (existing) { return; }
+      } else {
+        // Learn the other party's name from their message (used in the header).
+        var sName = oMsg.senderName || oMsg.userName;
+        if (sName && this._model.getProperty("/peerName") !== sName) {
+          this._model.setProperty("/peerName", sName);
+        }
       }
       this._appendMessage(oMsg, oMsg.userId === sMyId);
       this._onPeerTyping(false);
@@ -440,6 +441,10 @@ sap.ui.define([
       var sMyId = this._ctxModel.getProperty("/userId");
       if (oP.userId && oP.userId !== sMyId) {
         this._setConn("online");
+        // Learn the other party's name from their presence announcement.
+        if (oP.userName && this._model.getProperty("/peerName") !== oP.userName) {
+          this._model.setProperty("/peerName", oP.userName);
+        }
       }
       // The relay includes an authoritative dispatcherPresent flag on the
       // self-echo (self:true) and on room-state broadcasts (roomState:true).
