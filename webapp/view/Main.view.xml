@@ -37,11 +37,11 @@
                 class="fsmChatHeaderActivity"
                 visible="{= !!${context>/_bound} }"
                 text="{= ${i18n>activityLabel} + ' ' + ${/activityCode} }" />
-              <!-- Unbound: show the role label as before. -->
+              <!-- Unbound: dispatcher sees the inbox label; others see role. -->
               <Text
                 class="fsmChatHeaderSub"
                 visible="{= !${context>/_bound} }"
-                text="{context>/_peerLabel}" />
+                text="{= ${/isDispatcher} ? ${i18n>dispInboxLabel} : ${context>/_peerLabel} }" />
             </VBox>
           </HBox>
           <HBox class="fsmChatHeaderRight" alignItems="Center">
