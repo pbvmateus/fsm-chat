@@ -41,7 +41,7 @@ const GENERIC_MAX = 200;            // cap retained unattended messages
 const GENERIC_TTL_MS = 24 * 60 * 60 * 1000; // drop entries older than 24h
 
 // Bump this when deploying so /rooms confirms the running build is current.
-const BUILD_MARKER = "presence-active-1";
+const BUILD_MARKER = "presence-active-2";
 // Liveness ping interval (also used by the heartbeat below).
 const HEARTBEAT_MS = 10000;
 

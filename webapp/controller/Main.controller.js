@@ -127,7 +127,17 @@ sap.ui.define([
       }
     },
 
+    _isFramed: function () {
+      try { return window.parent && window.parent !== window; }
+      catch (e) { return true; }
+    },
+
     _isHidden: function () {
+      // In a framed shell extension, document.hidden is unreliable (framed
+      // content is often reported hidden even when visible), which would
+      // wrongly mark the dispatcher inactive. Only trust visibility when we are
+      // NOT framed (the mobile technician runs unframed, where it's reliable).
+      if (this._isFramed()) { return false; }
       return (typeof document !== "undefined") && document.hidden === true;
     },
 
@@ -139,11 +149,14 @@ sap.ui.define([
 
     _setupActivityTracking: function () {
       var that = this;
-      // Visibility change: chat tab/app foregrounded or backgrounded.
+      // Visibility change: only meaningful when unframed (mobile). For the
+      // framed dispatcher this is a no-op so it stays "active" while open.
       this._onVisibility = function () {
+        if (that._isFramed()) { return; }
         that._sendActivity(!that._isHidden());
       };
-      // Page being hidden/unloaded (navigated away, app closing): mark inactive.
+      // Page being hidden/unloaded (navigated away / app closing): mark
+      // inactive. This is reliable in both framed and unframed contexts.
       this._onPageHide = function () {
         that._sendActivity(false);
       };
@@ -366,6 +379,10 @@ sap.ui.define([
       if (!sActivityId) { return; }
       // Remove from our own inbox immediately for snappy feedback.
       this._onGenericClaimed({ activityId: sActivityId });
+      // Clear the current-room marker so _connectRoom can't short-circuit if
+      // any stale state lingers; this guarantees a real (re)join to the
+      // activity room rather than staying on the generic connection.
+      this._currentRoom = null;
       // Bind the whole app to this activity (updates header + connects room).
       this.getOwnerComponent().bindActivityManually(sActivityId);
     },
