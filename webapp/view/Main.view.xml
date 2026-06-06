@@ -19,7 +19,7 @@
             <Title text="{i18n>chatTitle}" level="H2" class="fsmChatHeaderTitle" />
             <Text
               text="{= ${context>/_bound} ? (${context>/role} === 'dispatcher' ? ${i18n>hdrTalkingToTech} + ' \u00b7 ' + ${i18n>activityLabel} + ' ' + ${/activityCode} : ${i18n>hdrTalkingToDisp} + ' \u00b7 ' + ${i18n>activityLabel} + ' ' + ${/activityCode}) : ${context>/_peerLabel} }"
-              maxLines="1"
+              maxLines="2"
               class="fsmChatHeaderSub" />
           </VBox>
         </contentLeft>
@@ -68,27 +68,47 @@
         class="fsmChatBindPanel"
         alignItems="Center"
         justifyContent="Center">
-        <core:Icon src="sap-icon://activity-items" class="fsmChatBindIcon" />
-        <Title text="{i18n>bindTitle}" level="H3" class="fsmChatBindTitle" />
-        <Text
-          text="{= ${context>/_shellReady} ? ${i18n>bindHintShell} : ${i18n>bindHint} }"
-          class="fsmChatBindHint"
-          textAlign="Center" />
-        <HBox class="fsmChatBindRow" alignItems="Center">
-          <Input
-            id="manualIdInput"
-            width="14rem"
-            placeholder="{i18n>bindPlaceholder}"
-            value="{/manualId}"
-            submit=".onBindManual"
-            class="fsmChatBindInput" />
-          <Button
-            text="{i18n>bindButton}"
-            type="Emphasized"
-            enabled="{= !!${/manualId} &amp;&amp; ${/manualId}.trim().length > 0 }"
-            press=".onBindManual"
-            class="fsmChatBindBtn" />
-        </HBox>
+
+        <!-- Non-dispatcher (technician/tester): manual activity-ID entry. -->
+        <VBox
+          visible="{= !${/isDispatcher} }"
+          alignItems="Center"
+          width="100%">
+          <core:Icon src="sap-icon://activity-items" class="fsmChatBindIcon" />
+          <Title text="{i18n>bindTitle}" level="H3" class="fsmChatBindTitle" />
+          <Text
+            text="{= ${context>/_shellReady} ? ${i18n>bindHintShell} : ${i18n>bindHint} }"
+            class="fsmChatBindHint"
+            textAlign="Center" />
+          <HBox class="fsmChatBindRow" alignItems="Center">
+            <Input
+              id="manualIdInput"
+              width="14rem"
+              placeholder="{i18n>bindPlaceholder}"
+              value="{/manualId}"
+              submit=".onBindManual"
+              class="fsmChatBindInput" />
+            <Button
+              text="{i18n>bindButton}"
+              type="Emphasized"
+              enabled="{= !!${/manualId} &amp;&amp; ${/manualId}.trim().length > 0 }"
+              press=".onBindManual"
+              class="fsmChatBindBtn" />
+          </HBox>
+        </VBox>
+
+        <!-- Dispatcher: inbox-oriented heading (no manual entry). -->
+        <VBox
+          visible="{= !!${/isDispatcher} }"
+          alignItems="Center"
+          width="100%">
+          <core:Icon src="sap-icon://inbox" class="fsmChatBindIcon" />
+          <Title text="{i18n>dispWaitTitle}" level="H3" class="fsmChatBindTitle" />
+          <Text
+            text="{= ${/unattendedCount} > 0 ? ${i18n>dispWaitHasItems} : ${i18n>dispWaitEmpty} }"
+            class="fsmChatBindHint"
+            textAlign="Center" />
+        </VBox>
 
         <!-- ===== Dispatcher inbox: unattended conversations ===== -->
         <VBox

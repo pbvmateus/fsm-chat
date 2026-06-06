@@ -12,6 +12,24 @@ html, body, #content, .sapMShell, .sapMApp {
 .fsmChatHeaderBar {
   background: var(--sapShellColor, #354a5f);
 }
+/* The default Bar is a single compact row (~2.75rem) which clips a two-line
+   title plus the controls. Let the header grow to fit its content and add
+   breathing room top/bottom. Target the generated Bar internals. */
+.fsmChatHeaderBar.sapMBar,
+.fsmChatHeaderBar .sapMBarPH {
+  height: auto;
+  min-height: 4.25rem;
+  padding-top: 0.4rem;
+  padding-bottom: 0.4rem;
+  box-sizing: border-box;
+}
+.fsmChatHeaderBar .sapMBarLeft,
+.fsmChatHeaderBar .sapMBarRight,
+.fsmChatHeaderBar .sapMBarPH {
+  align-items: center;
+}
+/* Allow the title block to use two lines and wrap rather than clip. */
+.fsmChatHeaderBar .sapMBarLeft { flex: 1 1 auto; min-width: 0; overflow: hidden; }
 .fsmChatHeaderIcon {
   color: #ffffff;
   font-size: 1.5rem;
@@ -19,22 +37,38 @@ html, body, #content, .sapMShell, .sapMApp {
 }
 .fsmChatHeaderTitleBox {
   justify-content: center;
+  min-width: 0;
 }
 .fsmChatHeaderTitle.sapMTitle {
   color: var(--sapShell_TextColor, var(--sapTextColor, #32363a));
-  line-height: 1.1;
+  line-height: 1.2;
+  font-size: 1.0625rem;
 }
 .fsmChatHeaderSub.sapMText {
   color: var(--sapShell_TextColor, var(--sapContent_LabelColor, #6a6d70));
-  opacity: 0.85;
-  font-size: 0.75rem;
+  opacity: 0.9;
+  font-size: 0.85rem;
+  line-height: 1.25;
+}
+/* Keep the right-side controls from being squeezed; give them room. */
+.fsmChatHeaderBar .sapMBarRight {
+  flex: 0 0 auto;
+  gap: 0.15rem;
 }
 .fsmChatConnStatus {
   margin-right: 0.5rem;
 }
 .fsmChatConnStatus .sapMObjStatusText {
-  font-size: 0.8125rem;
+  font-size: 0.9rem;
   font-weight: 600;
+}
+.fsmChatConnStatus .sapMObjStatusIcon {
+  font-size: 1.05rem;
+}
+/* Bigger, easier-to-tap video + leave buttons in the header. */
+.fsmChatVideoBtn .sapUiIcon,
+.fsmChatLeaveBtn .sapUiIcon {
+  font-size: 1.35rem;
 }
 
 /* ---- Message area ------------------------------------------------- */
