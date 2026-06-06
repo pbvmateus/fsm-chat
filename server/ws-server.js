@@ -217,12 +217,15 @@ wss.on("connection", (ws) => {
         ws._role !== "dispatcher" &&
         !dispatcherPresent(roomId)) {
       const activityId = activityIdFromRoom(roomId);
+      // The chat message may carry the sender name as userName or senderName;
+      // fall back to the name captured at join time.
+      const senderName = msg.userName || msg.senderName || ws._userName || null;
       const entry = {
         activityId: activityId,
         roomId: roomId,
         text: msg.text,
         userId: msg.userId,
-        userName: msg.userName,
+        userName: senderName,
         ts: Date.now()
       };
       genericBacklog.push(entry);
@@ -234,7 +237,7 @@ wss.on("connection", (ws) => {
         roomId: roomId,
         text: msg.text,
         userId: msg.userId,
-        userName: msg.userName,
+        userName: senderName,
         ts: entry.ts
       });
     }

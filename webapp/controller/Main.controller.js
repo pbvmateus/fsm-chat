@@ -390,6 +390,7 @@ sap.ui.define([
           Math.random().toString(36).slice(2, 6),
         userId: this._ctxModel.getProperty("/userId"),
         senderName: this._ctxModel.getProperty("/userName"),
+        userName: this._ctxModel.getProperty("/userName"),
         role: this._ctxModel.getProperty("/role"),
         text: sText,
         ts: ChatTransport.nowISO()

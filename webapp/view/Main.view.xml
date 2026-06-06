@@ -8,58 +8,61 @@
 
   <Page
     id="chatPage"
-    showHeader="true"
+    showHeader="false"
     class="fsmChatPage">
 
-    <customHeader>
-      <Bar class="fsmChatHeaderBar">
-        <contentLeft>
-          <core:Icon src="sap-icon://discussion" class="fsmChatHeaderIcon" />
-          <VBox class="fsmChatHeaderTitleBox">
-            <Title text="{i18n>chatTitle}" level="H2" class="fsmChatHeaderTitle" />
-            <Text
-              text="{= ${context>/_bound} ? (${context>/role} === 'dispatcher' ? ${i18n>hdrTalkingToTech} + ' \u00b7 ' + ${i18n>activityLabel} + ' ' + ${/activityCode} : ${i18n>hdrTalkingToDisp} + ' \u00b7 ' + ${i18n>activityLabel} + ' ' + ${/activityCode}) : ${context>/_peerLabel} }"
-              maxLines="2"
-              class="fsmChatHeaderSub" />
-          </VBox>
-        </contentLeft>
-        <contentRight>
-          <Button
-            id="videoBtn"
-            icon="sap-icon://video"
-            type="Transparent"
-            tooltip="{i18n>shareVideo}"
-            visible="{= !!${context>/_bound} &amp;&amp; ${/videoSupported} &amp;&amp; ${context>/role} === 'technician' &amp;&amp; !${/videoActive} }"
-            press=".onStartVideo"
-            class="fsmChatVideoBtn" />
-          <Button
-            id="videoEndBtn"
-            icon="sap-icon://decline"
-            type="Reject"
-            tooltip="{i18n>endVideo}"
-            visible="{= !!${/videoActive} }"
-            press=".onEndVideo"
-            class="fsmChatVideoBtn" />
-          <Button
-            id="leaveActivityBtn"
-            icon="sap-icon://inbox"
-            text="{i18n>leaveActivity}"
-            type="Transparent"
-            tooltip="{i18n>leaveActivityTip}"
-            visible="{= !!${context>/_bound} &amp;&amp; ${context>/role} === 'dispatcher' }"
-            press=".onLeaveActivity"
-            class="fsmChatLeaveBtn" />
-          <ObjectStatus
-            id="connStatus"
-            text="{context>/_connText}"
-            state="{context>/_connState}"
-            icon="{context>/_connIcon}"
-            class="fsmChatConnStatus" />
-        </contentRight>
-      </Bar>
-    </customHeader>
-
     <content>
+
+      <!-- ============ HEADER (in content flow, not a fixed-height Bar) ======
+           The FSM mobile webview clips a fixed-height customHeader Bar, hiding
+           the title/subtitle/status. Rendering the header as a normal content
+           block lets it size to its content so everything stays visible. -->
+      <VBox class="fsmChatHeaderBlock" width="100%">
+        <HBox class="fsmChatHeaderRow" justifyContent="SpaceBetween" alignItems="Center" width="100%">
+          <HBox class="fsmChatHeaderLeft" alignItems="Center">
+            <core:Icon src="sap-icon://discussion" class="fsmChatHeaderIcon" />
+            <VBox class="fsmChatHeaderTitleBox">
+              <Title text="{i18n>chatTitle}" level="H2" class="fsmChatHeaderTitle" />
+              <Text
+                text="{= ${context>/_bound} ? (${context>/role} === 'dispatcher' ? ${i18n>hdrTalkingToTech} + ' \u00b7 ' + ${i18n>activityLabel} + ' ' + ${/activityCode} : ${i18n>hdrTalkingToDisp} + ' \u00b7 ' + ${i18n>activityLabel} + ' ' + ${/activityCode}) : ${context>/_peerLabel} }"
+                class="fsmChatHeaderSub" />
+            </VBox>
+          </HBox>
+          <HBox class="fsmChatHeaderRight" alignItems="Center">
+            <Button
+              id="videoBtn"
+              icon="sap-icon://video"
+              type="Transparent"
+              tooltip="{i18n>shareVideo}"
+              visible="{= !!${context>/_bound} &amp;&amp; ${/videoSupported} &amp;&amp; ${context>/role} === 'technician' &amp;&amp; !${/videoActive} }"
+              press=".onStartVideo"
+              class="fsmChatVideoBtn" />
+            <Button
+              id="videoEndBtn"
+              icon="sap-icon://decline"
+              type="Reject"
+              tooltip="{i18n>endVideo}"
+              visible="{= !!${/videoActive} }"
+              press=".onEndVideo"
+              class="fsmChatVideoBtn" />
+            <Button
+              id="leaveActivityBtn"
+              icon="sap-icon://inbox"
+              text="{i18n>leaveActivity}"
+              type="Transparent"
+              tooltip="{i18n>leaveActivityTip}"
+              visible="{= !!${context>/_bound} &amp;&amp; ${context>/role} === 'dispatcher' }"
+              press=".onLeaveActivity"
+              class="fsmChatLeaveBtn" />
+            <ObjectStatus
+              id="connStatus"
+              text="{context>/_connText}"
+              state="{context>/_connState}"
+              icon="{context>/_connIcon}"
+              class="fsmChatConnStatus" />
+          </HBox>
+        </HBox>
+      </VBox>
 
       <!-- ============ UNBOUND STATE: no activity selected yet ============ -->
       <VBox
@@ -130,7 +133,9 @@
             <CustomListItem class="fsmChatInboxItem">
               <HBox justifyContent="SpaceBetween" alignItems="Center" width="100%" class="fsmChatInboxRow">
                 <VBox class="fsmChatInboxRowText">
-                  <Text text="{= ${lastName} || ${i18n>roleTechnician} }" class="fsmChatInboxName" />
+                  <Text
+                    text="{= (${lastName} || ${i18n>roleTechnician}) + ' \u00b7 ' + ${i18n>roleTechnician} }"
+                    class="fsmChatInboxName" />
                   <Text text="{lastText}" maxLines="1" class="fsmChatInboxPreview" />
                   <Text text="{= ${i18n>activityLabel} + ' ' + ${activityId} }" maxLines="1" class="fsmChatInboxActivity" />
                 </VBox>
