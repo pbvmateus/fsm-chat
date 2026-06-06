@@ -60,6 +60,7 @@ html, body, #content, .sapMShell, .sapMApp {
 .fsmChatHeaderStatusIcon.fsmStatWait { color: var(--sapWarningColor, #e9730c); }
 .fsmChatHeaderStatusIcon.fsmStatLive { color: var(--sapPositiveColor, #30914c); }
 .fsmChatHeaderStatusIcon.fsmStatPeer { color: var(--sapHighlightColor, #0a6ed1); }
+.fsmChatHeaderStatusIcon.fsmStatOff { color: var(--sapNegativeColor, #bb0000); }
 .fsmChatHeaderSub.sapMText {
   color: var(--sapTextColor, #32363a);
   font-size: 0.85rem;

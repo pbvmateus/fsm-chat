@@ -26,11 +26,11 @@
               <!-- Line 1: who you're talking to + (technician only) live status. -->
               <HBox alignItems="Center" class="fsmChatHeaderStatusRow" visible="{= !!${context>/_bound} }">
                 <core:Icon
-                  src="{= ${/isTechnician} ? (${/dispatcherPresent} ? 'sap-icon://connected' : 'sap-icon://pending') : 'sap-icon://employee' }"
-                  class="fsmChatHeaderStatusIcon {= ${/isTechnician} ? (${/dispatcherPresent} ? 'fsmStatLive' : 'fsmStatWait') : 'fsmStatPeer' }" />
+                  src="{= ${/isTechnician} ? (${/dispatcherPresent} ? 'sap-icon://connected' : 'sap-icon://pending') : (${/technicianPresent} ? 'sap-icon://connected' : 'sap-icon://disconnected') }"
+                  class="fsmChatHeaderStatusIcon {= ${/isTechnician} ? (${/dispatcherPresent} ? 'fsmStatLive' : 'fsmStatWait') : (${/technicianPresent} ? 'fsmStatLive' : 'fsmStatOff') }" />
                 <Text
                   class="fsmChatHeaderSub"
-                  text="{= ${/isTechnician} ? (${/dispatcherPresent} ? ${i18n>techDispConnected} : ${i18n>techWaiting}) : (${/peerName} ? ${i18n>hdrTalkingToTech} + ' \u00b7 ' + ${/peerName} : ${i18n>hdrTalkingToTech}) }" />
+                  text="{= ${/isTechnician} ? (${/dispatcherPresent} ? ${i18n>techDispConnected} : ${i18n>techWaiting}) : ((${/technicianPresent} ? ${i18n>dispTechOnline} : ${i18n>dispTechOffline}) + (${/peerName} ? ' \u00b7 ' + ${/peerName} : '')) }" />
               </HBox>
               <!-- Line 2: activity id, shown ONCE here (no duplicate banner below). -->
               <Text

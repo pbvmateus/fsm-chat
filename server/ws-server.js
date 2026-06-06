@@ -81,14 +81,24 @@ function roomSize(roomId) {
   return rooms.has(roomId) ? rooms.get(roomId).size : 0;
 }
 
-// Is at least one DISPATCHER currently present in this activity room?
-function dispatcherPresent(roomId) {
+// Is at least one peer of the given role currently present in this room?
+function rolePresent(roomId, role) {
   const set = rooms.get(roomId);
   if (!set) return false;
   for (const peer of set) {
-    if (peer.readyState === peer.OPEN && peer._role === "dispatcher") return true;
+    if (peer.readyState === peer.OPEN && peer._role === role) return true;
   }
   return false;
+}
+
+// Is at least one DISPATCHER currently present in this activity room?
+function dispatcherPresent(roomId) {
+  return rolePresent(roomId, "dispatcher");
+}
+
+// Is at least one TECHNICIAN currently present in this activity room?
+function technicianPresent(roomId) {
+  return rolePresent(roomId, "technician");
 }
 
 function broadcast(roomId, data, exclude) {
@@ -139,22 +149,24 @@ wss.on("connection", (ws) => {
       }, ws);
 
       // Tell the newcomer how many peers are already here, and whether a
-      // dispatcher is among them (authoritative initial state for the
-      // technician's "waiting vs connected" label).
+      // dispatcher / technician is among them (authoritative initial state for
+      // the header presence labels on each side).
       try {
         ws.send(JSON.stringify({
           type: "presence", roomId: roomId,
           online: roomSize(roomId) > 1, peerCount: roomSize(roomId) - 1,
-          dispatcherPresent: dispatcherPresent(roomId), self: true
+          dispatcherPresent: dispatcherPresent(roomId),
+          technicianPresent: technicianPresent(roomId), self: true
         }));
       } catch (e) { /* noop */ }
 
-      // Also re-broadcast authoritative dispatcher-presence to the room so
-      // existing members (e.g. a technician already waiting) update their label
-      // the moment a dispatcher joins.
+      // Also re-broadcast authoritative role-presence to the room so existing
+      // members update their label the moment a peer joins (technician sees a
+      // dispatcher arrive; dispatcher sees the technician online).
       broadcast(roomId, {
         type: "presence", roomId: roomId,
-        dispatcherPresent: dispatcherPresent(roomId), roomState: true
+        dispatcherPresent: dispatcherPresent(roomId),
+        technicianPresent: technicianPresent(roomId), roomState: true
       }, ws);
 
       // If a dispatcher just joined the generic room, replay the backlog so
@@ -198,7 +210,8 @@ wss.on("connection", (ws) => {
         ws._rooms.delete(roomId);
         broadcast(roomId, { type: "presence", roomId: roomId, online: false,
           peerCount: roomSize(roomId), userId: ws._userId, role: ws._role,
-          dispatcherPresent: dispatcherPresent(roomId), roomState: true });
+          dispatcherPresent: dispatcherPresent(roomId),
+          technicianPresent: technicianPresent(roomId), roomState: true });
       }
       return;
     }
@@ -249,7 +262,8 @@ wss.on("connection", (ws) => {
     for (const roomId of myRooms) {
       broadcast(roomId, { type: "presence", roomId: roomId, online: false,
         peerCount: roomSize(roomId), userId: ws._userId, role: ws._role,
-        dispatcherPresent: dispatcherPresent(roomId), roomState: true });
+        dispatcherPresent: dispatcherPresent(roomId),
+        technicianPresent: technicianPresent(roomId), roomState: true });
     }
   });
 

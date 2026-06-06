@@ -45,6 +45,8 @@ sap.ui.define([
         unattendedCount: 0,
         // Technician-facing: is a dispatcher currently in this activity room?
         dispatcherPresent: false,
+        // Dispatcher-facing: is the technician currently in this activity room?
+        technicianPresent: false,
         // Name of the other party, learned from their messages/presence.
         peerName: "",
         // Clean activity id for display in the header / labels.
@@ -146,6 +148,7 @@ sap.ui.define([
       this._model.setProperty("/activityCode", sCode);
       // Reset until the relay tells us whether a dispatcher is present.
       this._model.setProperty("/dispatcherPresent", false);
+      this._model.setProperty("/technicianPresent", false);
       // Reset the learned peer name for the new conversation.
       this._model.setProperty("/peerName", "");
 
@@ -446,12 +449,16 @@ sap.ui.define([
           this._model.setProperty("/peerName", oP.userName);
         }
       }
-      // The relay includes an authoritative dispatcherPresent flag on the
-      // self-echo (self:true) and on room-state broadcasts (roomState:true).
-      // The technician uses it to show "waiting for dispatcher" vs "connected".
-      if (Object.prototype.hasOwnProperty.call(oP, "dispatcherPresent") &&
-          (oP.self || oP.roomState)) {
-        this._model.setProperty("/dispatcherPresent", !!oP.dispatcherPresent);
+      // The relay includes authoritative role-presence flags on the self-echo
+      // (self:true) and room-state broadcasts (roomState:true). Each side uses
+      // the relevant one for its header indicator.
+      if ((oP.self || oP.roomState)) {
+        if (Object.prototype.hasOwnProperty.call(oP, "dispatcherPresent")) {
+          this._model.setProperty("/dispatcherPresent", !!oP.dispatcherPresent);
+        }
+        if (Object.prototype.hasOwnProperty.call(oP, "technicianPresent")) {
+          this._model.setProperty("/technicianPresent", !!oP.technicianPresent);
+        }
       }
     },
 
