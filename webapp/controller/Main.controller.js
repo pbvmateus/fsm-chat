@@ -14,6 +14,17 @@ sap.ui.define([
       var oCtxModel = oComponent.getModel("context");
       this._ctxModel = oCtxModel;
 
+      // Video support check, guarded: if the VideoCall module failed to load
+      // or isSupported throws in a strict webview, this must NOT crash onInit
+      // (which would break the chat connection entirely). Default to false.
+      var bVideoSupported = false;
+      try {
+        bVideoSupported = !!(VideoCall && VideoCall.isSupported &&
+          VideoCall.isSupported());
+      } catch (e) {
+        bVideoSupported = false;
+      }
+
       // View-local data model.
       this._model = new JSONModel({
         messages: [],
@@ -21,7 +32,7 @@ sap.ui.define([
         peerTyping: false,
         manualId: "",
         // Video call state
-        videoSupported: VideoCall.isSupported(),
+        videoSupported: bVideoSupported,
         videoActive: false,
         videoState: "",        // requesting-camera | calling | connecting | connected | ended | error
         videoStatusText: "",
