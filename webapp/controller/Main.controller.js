@@ -13,6 +13,7 @@ sap.ui.define([
       var oComponent = this.getOwnerComponent();
       var oCtxModel = oComponent.getModel("context");
       this._ctxModel = oCtxModel;
+      var sRoleEarly = oCtxModel.getProperty("/role");
 
       // Video support check, guarded: if the VideoCall module failed to load
       // or isSupported throws in a strict webview, this must NOT crash onInit
@@ -36,12 +37,16 @@ sap.ui.define([
         videoActive: false,
         videoState: "",        // requesting-camera | calling | connecting | connected | ended | error
         videoStatusText: "",
-        incomingCall: false    // viewer: a technician is offering video
+        incomingCall: false,   // viewer: a technician is offering video
+        // Generic-room (unattended messages) inbox — dispatcher only.
+        isDispatcher: sRoleEarly === "dispatcher",
+        unattended: [],        // [{activityId, lastText, lastName, count, ts}]
+        unattendedCount: 0
       });
       this.getView().setModel(this._model);
 
       // Decorate the context model with display helpers.
-      var sRole = oCtxModel.getProperty("/role");
+      var sRole = sRoleEarly;
       var peerRole = sRole === "technician" ? "dispatcher" : "technician";
       var oBundle = oComponent.getModel("i18n").getResourceBundle();
       oCtxModel.setProperty("/_peerRole", peerRole);
@@ -71,6 +76,12 @@ sap.ui.define([
       var sExistingRoom = oCtxModel.getProperty("/roomId");
       if (sExistingRoom) {
         this._connectRoom(sExistingRoom);
+      } else if (sRoleEarly === "dispatcher") {
+        // Dispatcher with no activity bound yet: connect anyway so the generic
+        // "unattended messages" inbox works while they wait. We use the generic
+        // room as the primary room in this case; picking up a conversation will
+        // rebind to that activity's room.
+        this._connectGenericOnly();
       }
 
       // Clean up on exit.
@@ -128,12 +139,25 @@ sap.ui.define([
 
       var that = this;
       this._transport = ChatTransport.create(oOpts, {
-        onOpen: function () { that._setConn("online"); },
+        onOpen: function () {
+          that._setConn("online");
+          // Dispatchers also watch the shared generic room for unattended
+          // messages (technician messages sent while no dispatcher was in the
+          // activity room). Joining rides the same socket; re-joining on each
+          // reconnect/rebind is harmless (relay de-dupes membership).
+          if (that._ctxModel.getProperty("/role") === "dispatcher" &&
+              typeof that._transport.joinSecondaryRoom === "function") {
+            that._transport.joinSecondaryRoom("fsm-generic");
+          }
+        },
         onClose: function () { that._setConn("offline"); },
         onMessage: function (m) { that._onIncoming(m); },
         onPresence: function (p) { that._onPresence(p); },
         onTyping: function (b) { that._onPeerTyping(b); },
-        onSignal: function (sig) { that._onSignal(sig); }
+        onSignal: function (sig) { that._onSignal(sig); },
+        onGenericMessage: function (g) { that._onGenericMessage(g); },
+        onGenericBacklog: function (g) { that._onGenericBacklog(g); },
+        onGenericClaimed: function (g) { that._onGenericClaimed(g); }
       });
       this._transport.connect();
     },
@@ -141,6 +165,134 @@ sap.ui.define([
     /**
      * Dispatcher (or tester) manually binds a Service Call / Activity id.
      */
+    /**
+     * Dispatcher-only: connect to the relay with the GENERIC room as primary,
+     * for when no activity is bound yet. This lets unattended messages arrive
+     * in the inbox immediately on load. When the dispatcher picks up a
+     * conversation, _connectRoom rebinds to that activity's room (and the
+     * onOpen handler re-joins fsm-generic as a secondary room).
+     */
+    _connectGenericOnly: function () {
+      if (this._transport && this._currentRoom === "fsm-generic") { return; }
+      if (this._transport) { this._transport.disconnect(); this._transport = null; }
+      this._currentRoom = "fsm-generic";
+
+      var oOpts = {
+        roomId: "fsm-generic",
+        userId: this._ctxModel.getProperty("/userId"),
+        userName: this._ctxModel.getProperty("/userName"),
+        role: this._ctxModel.getProperty("/role")
+      };
+      this._setConn("connecting");
+      var that = this;
+      this._transport = ChatTransport.create(oOpts, {
+        onOpen: function () { that._setConn("online"); },
+        onClose: function () { that._setConn("offline"); },
+        onMessage: function () { /* no activity thread in generic-only mode */ },
+        onPresence: function (p) { that._onPresence(p); },
+        onTyping: function () { /* noop */ },
+        onSignal: function () { /* noop */ },
+        onGenericMessage: function (g) { that._onGenericMessage(g); },
+        onGenericBacklog: function (g) { that._onGenericBacklog(g); },
+        onGenericClaimed: function (g) { that._onGenericClaimed(g); }
+      });
+      this._transport.connect();
+    },
+
+    /**
+     * A live unattended message arrived from the generic room. Fold it into the
+     * inbox model grouped by activityId (so repeated messages from the same
+     * activity collapse into one row with a count + latest preview).
+     */
+    _onGenericMessage: function (g) {
+      if (!g || !g.activityId) { return; }
+      this._upsertUnattended({
+        activityId: g.activityId,
+        lastText: g.text,
+        lastName: g.userName,
+        ts: g.ts || Date.now(),
+        incr: 1
+      });
+      var oBundle = this.getOwnerComponent().getModel("i18n").getResourceBundle();
+      MessageToast.show(oBundle.getText("genericNewToast",
+        [g.userName || "Technician"]));
+    },
+
+    /**
+     * The relay replayed the backlog of unattended messages when we joined the
+     * generic room. Rebuild the inbox from it (grouped by activity).
+     */
+    _onGenericBacklog: function (g) {
+      if (!g || !Array.isArray(g.items)) { return; }
+      var map = {};
+      g.items.forEach(function (m) {
+        var a = m.activityId;
+        if (!map[a]) {
+          map[a] = { activityId: a, lastText: m.text, lastName: m.userName,
+            ts: m.ts, count: 1 };
+        } else {
+          map[a].count += 1;
+          if ((m.ts || 0) >= (map[a].ts || 0)) {
+            map[a].lastText = m.text; map[a].lastName = m.userName; map[a].ts = m.ts;
+          }
+        }
+      });
+      var list = Object.keys(map).map(function (k) { return map[k]; });
+      list.sort(function (x, y) { return (y.ts || 0) - (x.ts || 0); });
+      this._model.setProperty("/unattended", list);
+      this._model.setProperty("/unattendedCount", list.length);
+    },
+
+    /**
+     * Another dispatcher picked up (or any dispatcher joined) an activity, so
+     * it's no longer unattended — remove it from this inbox too.
+     */
+    _onGenericClaimed: function (g) {
+      if (!g || !g.activityId) { return; }
+      var list = (this._model.getProperty("/unattended") || []).filter(
+        function (row) { return row.activityId !== g.activityId; });
+      this._model.setProperty("/unattended", list);
+      this._model.setProperty("/unattendedCount", list.length);
+    },
+
+    _upsertUnattended: function (o) {
+      var list = this._model.getProperty("/unattended") || [];
+      var found = null;
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].activityId === o.activityId) { found = list[i]; break; }
+      }
+      if (found) {
+        found.lastText = o.lastText;
+        found.lastName = o.lastName;
+        found.ts = o.ts;
+        found.count = (found.count || 0) + (o.incr || 0);
+      } else {
+        list.unshift({ activityId: o.activityId, lastText: o.lastText,
+          lastName: o.lastName, ts: o.ts, count: o.incr || 1 });
+      }
+      // newest first
+      list.sort(function (x, y) { return (y.ts || 0) - (x.ts || 0); });
+      this._model.setProperty("/unattended", list);
+      this._model.setProperty("/unattendedCount", list.length);
+    },
+
+    /**
+     * Dispatcher clicks "Pick up" on an unattended conversation. Bind the app
+     * to that activity (which rebinds the chat transport to its room). The
+     * relay then sees a dispatcher present and stops routing that activity to
+     * the generic room, and notifies other dispatchers it's claimed.
+     */
+    onPickUp: function (oEvent) {
+      var oCtx = oEvent.getSource().getBindingContext();
+      if (!oCtx) { return; }
+      var sActivityId = oCtx.getProperty("activityId");
+      if (!sActivityId) { return; }
+      // Remove from our own inbox immediately for snappy feedback.
+      this._onGenericClaimed({ activityId: sActivityId });
+      // Bind the whole app to this activity (updates header + connects room).
+      this.getOwnerComponent().bindActivityManually(sActivityId);
+    },
+
     onBindManual: function () {
       var sId = (this._model.getProperty("/manualId") || "").trim();
       if (!sId) { return; }

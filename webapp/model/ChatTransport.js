@@ -60,6 +60,26 @@ sap.ui.define([], function () {
     this._ws.onmessage = function (evt) {
       var data;
       try { data = JSON.parse(evt.data); } catch (e) { return; }
+
+      // Generic-room (unattended message) traffic carries roomId "fsm-generic"
+      // and must NOT be filtered out by the activity-room check below. Handle it
+      // first and return.
+      switch (data.type) {
+        case "generic-message":
+          that._h.onGenericMessage && that._h.onGenericMessage(data);
+          return;
+        case "generic-backlog":
+          that._h.onGenericBacklog && that._h.onGenericBacklog(data);
+          return;
+        case "generic-claimed":
+          that._h.onGenericClaimed && that._h.onGenericClaimed(data);
+          return;
+        default:
+          break;
+      }
+
+      // For ordinary traffic, only accept messages for our primary activity
+      // room. (Presence/typing/chat/signal are all room-scoped.)
       if (data.roomId && data.roomId !== that._opts.roomId) {
         return; // not our room
       }
@@ -140,6 +160,32 @@ sap.ui.define([], function () {
     if (this._ws) {
       try { this._ws.close(); } catch (e) { /* noop */ }
     }
+  };
+
+  // Join an ADDITIONAL room over the same socket without leaving the primary
+  // activity room. Used so a dispatcher can watch "fsm-generic" for unattended
+  // messages while still bound to their own activity room (if any).
+  WebSocketTransport.prototype.joinSecondaryRoom = function (sRoomId) {
+    this._raw({
+      type: "join",
+      roomId: sRoomId,
+      userId: this._opts.userId,
+      userName: this._opts.userName,
+      role: this._opts.role
+    });
+  };
+
+  // Dispatcher "picks up" an unattended conversation: join that activity's room.
+  // Once joined, the relay sees a dispatcher present there and stops routing
+  // that activity's messages to the generic room. Returns the room id joined.
+  WebSocketTransport.prototype.claimActivityRoom = function (sActivityId) {
+    var roomId = "fsm-room-" + sActivityId;
+    this.joinSecondaryRoom(roomId);
+    return roomId;
+  };
+
+  WebSocketTransport.prototype.leaveSecondaryRoom = function (sRoomId) {
+    this._raw({ type: "leave", roomId: sRoomId });
   };
 
   WebSocketTransport.prototype.kind = function () { return "relay"; };
@@ -272,6 +318,14 @@ sap.ui.define([], function () {
   };
 
   LocalTransport.prototype.kind = function () { return "local"; };
+
+  // Local (same-machine) mode can't implement cross-dispatcher generic rooms;
+  // these are no-ops so the dispatcher UI code can call them uniformly.
+  LocalTransport.prototype.joinSecondaryRoom = function () { /* noop */ };
+  LocalTransport.prototype.claimActivityRoom = function (sActivityId) {
+    return "fsm-room-" + sActivityId;
+  };
+  LocalTransport.prototype.leaveSecondaryRoom = function () { /* noop */ };
 
   // Signaling over BroadcastChannel (same-machine only; real cross-device video
   // requires the relay). Provided so the API matches WebSocketTransport.

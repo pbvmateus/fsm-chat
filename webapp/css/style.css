@@ -235,3 +235,48 @@ html, body, #content, .sapMShell, .sapMApp {
 }
 .fsmChatIncomingText.sapMText { font-weight: 600; margin-bottom: 0.5rem; }
 .fsmChatIncomingBtns { gap: 0.5rem; }
+
+/* ===== Dispatcher inbox: unattended messages ===== */
+.fsmChatInbox {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: var(--sapList_Background, #fff);
+  border: 1px solid var(--sapList_BorderColor, #e5e5e5);
+  border-radius: 0.75rem;
+  max-width: 32rem;
+}
+.fsmChatInboxHead { margin-bottom: 0.25rem; }
+.fsmChatInboxIcon {
+  color: var(--sapInformativeColor, #0a6ed1);
+  font-size: 1.1rem;
+  margin-right: 0.5rem;
+}
+.fsmChatInboxTitle { color: var(--sapTextColor, #32363a); }
+.fsmChatInboxHint {
+  color: var(--sapContent_LabelColor, #6a6d70);
+  font-size: 0.8rem;
+  margin-bottom: 0.5rem;
+  display: block;
+}
+.fsmChatInboxList { background: transparent; }
+.fsmChatInboxItem { padding: 0; }
+.fsmChatInboxRow { padding: 0.6rem 0.25rem; }
+.fsmChatInboxRowText { flex: 1; min-width: 0; padding-right: 0.75rem; }
+.fsmChatInboxName {
+  font-weight: 600;
+  color: var(--sapTextColor, #32363a);
+  font-size: 0.9rem;
+}
+.fsmChatInboxPreview {
+  color: var(--sapTextColor, #32363a);
+  font-size: 0.85rem;
+  opacity: 0.85;
+}
+.fsmChatInboxActivity {
+  color: var(--sapContent_LabelColor, #6a6d70);
+  font-size: 0.75rem;
+  margin-top: 0.1rem;
+}
+.fsmChatInboxRowAction { gap: 0.35rem; }
+.fsmChatInboxCount { font-size: 0.75rem; }
+.fsmChatInboxPickBtn { white-space: nowrap; }
