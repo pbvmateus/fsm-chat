@@ -36,52 +36,97 @@ export async function onRequest(context) {
   if (!out.has("role")) out.set("role", "technician");
   if (!out.has("client")) out.set("client", "MOBILE");
 
+  // --- DIAGNOSTIC MODE -----------------------------------------------------
+  // Add &diag=1 to the container URL to see EXACTLY what FSM sent (method,
+  // headers, body) rendered as a page on the phone — no DevTools needed.
+  // Read cloudId / objectType / method off the screen, then remove &diag=1.
+  const diag = url.searchParams.get("diag") === "1";
+
+  // Read the body once (works for POST; harmless for GET).
+  let rawBody = "";
   let cloudId = null;
   let objectType = null;
+  let userName = null;
+  let parsedKind = "none";
 
-  // Only POST carries a body; GET just falls through to the redirect.
-  if (request.method === "POST") {
-    try {
-      const contentType = request.headers.get("content-type") || "";
-
-      if (contentType.includes("application/x-www-form-urlencoded") ||
-          contentType.includes("multipart/form-data")) {
-        const form = await request.formData();
-        cloudId = form.get("cloudId");
-        objectType = form.get("objectType");
-        const userName = form.get("userName");
-        if (userName && !out.has("userName")) out.set("userName", userName);
-      } else if (contentType.includes("application/json")) {
-        const body = await request.json();
-        cloudId = body.cloudId || (body.data && body.data.cloudId) || null;
-        objectType = body.objectType || null;
-        if (body.userName && !out.has("userName")) out.set("userName", body.userName);
-      } else {
-        // Unknown content type — try formData, then raw urlencoded text.
+  try {
+    const contentType = request.headers.get("content-type") || "";
+    if (request.method === "POST") {
+      // Read raw text first so we can both display and parse it.
+      rawBody = await request.text();
+      if (contentType.includes("json")) {
+        parsedKind = "json";
         try {
-          const form = await request.formData();
-          cloudId = form.get("cloudId");
-          objectType = form.get("objectType");
-          const userName = form.get("userName");
-          if (userName && !out.has("userName")) out.set("userName", userName);
-        } catch (e) {
-          const text = await request.text();
-          const parsed = new URLSearchParams(text);
-          cloudId = parsed.get("cloudId");
-          objectType = parsed.get("objectType");
-          const userName = parsed.get("userName");
-          if (userName && !out.has("userName")) out.set("userName", userName);
-        }
+          const body = JSON.parse(rawBody);
+          cloudId = body.cloudId || (body.data && body.data.cloudId) || null;
+          objectType = body.objectType || null;
+          userName = body.userName || null;
+        } catch (e) { /* leave nulls */ }
+      } else {
+        // urlencoded / form / unknown -> try urlencoded parse
+        parsedKind = "form/urlencoded";
+        const parsed = new URLSearchParams(rawBody);
+        cloudId = parsed.get("cloudId");
+        objectType = parsed.get("objectType");
+        userName = parsed.get("userName");
       }
-    } catch (err) {
-      // Body parse failed — redirect without objectId so the app still loads
-      // (it shows the manual-entry panel rather than erroring).
     }
+  } catch (err) {
+    rawBody = "(error reading body: " + (err && err.message) + ")";
+  }
+
+  if (diag) {
+    // Collect headers.
+    let headerLines = "";
+    for (const [k, v] of request.headers) {
+      // Redact the big JWT so the page is readable; show its presence + length.
+      let val = v;
+      if (k.toLowerCase() === "authorization" || k.toLowerCase() === "cookie") {
+        val = "(" + v.length + " chars, hidden)";
+      }
+      headerLines += k + ": " + val + "\n";
+    }
+    // Redact a token field inside the body for display, keep cloudId visible.
+    let bodyForDisplay = rawBody;
+    if (bodyForDisplay && bodyForDisplay.length > 4000) {
+      bodyForDisplay = bodyForDisplay.slice(0, 4000) + "\n…(truncated)";
+    }
+    const esc = function (s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    };
+    const html =
+      "<!DOCTYPE html><html><head><meta charset='utf-8'>" +
+      "<meta name='viewport' content='width=device-width, initial-scale=1'>" +
+      "<title>FSM /fsm diagnostic</title>" +
+      "<style>body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;margin:0;padding:14px;background:#f5f6f7;color:#222}" +
+      "h1{font-size:17px;margin:0 0 10px}.k{font-weight:700}" +
+      ".box{background:#fff;border:1px solid #ddd;border-radius:8px;padding:10px;margin-bottom:12px}" +
+      ".big{font-size:15px;padding:8px;border-radius:6px;margin-bottom:6px}" +
+      ".g{background:#c8e6c9;color:#1b5e20}.r{background:#ffcdd2;color:#b71c1c}" +
+      "pre{white-space:pre-wrap;word-break:break-all;font-size:12px;background:#1e1e1e;color:#d4d4d4;padding:10px;border-radius:6px}</style>" +
+      "</head><body>" +
+      "<h1>FSM /fsm diagnostic</h1>" +
+      "<div class='big " + (request.method === "POST" ? "g" : "r") + "'>METHOD: " + esc(request.method) +
+        (request.method === "POST" ? " (good — body expected)" : " (no body — this is why nothing binds)") + "</div>" +
+      "<div class='big " + (cloudId ? "g" : "r") + "'>cloudId: " + (cloudId ? esc(cloudId) : "(MISSING)") + "</div>" +
+      "<div class='box'><div class='k'>objectType</div>" + esc(objectType) + "</div>" +
+      "<div class='box'><div class='k'>userName</div>" + esc(userName) + "</div>" +
+      "<div class='box'><div class='k'>content-type</div>" + esc(request.headers.get("content-type")) +
+        "<br><div class='k'>parsed as</div>" + esc(parsedKind) + "</div>" +
+      "<div class='box'><div class='k'>Request body (raw)</div><pre>" + esc(bodyForDisplay || "(empty)") + "</pre></div>" +
+      "<div class='box'><div class='k'>Headers</div><pre>" + esc(headerLines) + "</pre></div>" +
+      "</body></html>";
+    return new Response(html, {
+      status: 200,
+      headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" }
+    });
   }
 
   if (cloudId) {
     out.set("objectId", cloudId);
     if (objectType) out.set("objectType", objectType);
+    if (userName && !out.has("userName")) out.set("userName", userName);
   }
 
   // Redirect to the static app (GET) with context in the query string.
