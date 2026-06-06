@@ -270,13 +270,39 @@ wss.on("connection", (ws) => {
   ws.on("error", () => { try { ws.close(); } catch (e) { /* noop */ } });
 });
 
+// Liveness: ping frequently so a vanished client (mobile webview suspends or
+// network drops WITHOUT a clean close) is detected quickly. When a socket
+// misses a pong it is terminated, which fires 'close' -> room cleanup ->
+// presence re-broadcast, so the other side's "connected" indicator clears
+// within roughly one interval instead of lingering up to a minute.
+const HEARTBEAT_MS = 10000;
 const heartbeat = setInterval(() => {
+  let reaped = false;
   wss.clients.forEach((ws) => {
-    if (ws.isAlive === false) { try { ws.terminate(); } catch (e) {} return; }
+    if (ws.isAlive === false) {
+      reaped = true;
+      // Remove from rooms synchronously here so the presence refresh below
+      // reflects the departure immediately (the async 'close' from terminate()
+      // may fire after this sweep computes counts).
+      removeFromAllRooms(ws);
+      try { ws.terminate(); } catch (e) { /* noop */ }
+      return;
+    }
     ws.isAlive = false;
     try { ws.ping(); } catch (e) { /* noop */ }
   });
-}, 30000);
+  // If we reaped anyone, proactively refresh presence for every room so the
+  // remaining members' "connected" indicators reflect the departure promptly.
+  if (reaped) {
+    for (const [roomId] of rooms) {
+      broadcast(roomId, {
+        type: "presence", roomId: roomId, roomState: true,
+        dispatcherPresent: dispatcherPresent(roomId),
+        technicianPresent: technicianPresent(roomId)
+      });
+    }
+  }
+}, HEARTBEAT_MS);
 
 wss.on("close", () => clearInterval(heartbeat));
 
