@@ -18,7 +18,7 @@
           <VBox class="fsmChatHeaderTitleBox">
             <Title text="{i18n>chatTitle}" level="H2" class="fsmChatHeaderTitle" />
             <Text
-              text="{= ${context>/_bound} ? ${context>/_peerName} + ' \u00b7 ' + ${i18n>activityLabel} + ' ' + ${context>/objectId} : ${context>/_peerLabel} }"
+              text="{= ${context>/_bound} ? (${context>/role} === 'dispatcher' ? ${i18n>hdrTalkingToTech} + ' \u00b7 ' + ${i18n>activityLabel} + ' ' + ${/activityCode} : ${i18n>hdrTalkingToDisp} + ' \u00b7 ' + ${i18n>activityLabel} + ' ' + ${/activityCode}) : ${context>/_peerLabel} }"
               maxLines="1"
               class="fsmChatHeaderSub" />
           </VBox>
@@ -40,6 +40,15 @@
             visible="{= !!${/videoActive} }"
             press=".onEndVideo"
             class="fsmChatVideoBtn" />
+          <Button
+            id="leaveActivityBtn"
+            icon="sap-icon://inbox"
+            text="{i18n>leaveActivity}"
+            type="Transparent"
+            tooltip="{i18n>leaveActivityTip}"
+            visible="{= !!${context>/_bound} &amp;&amp; ${context>/role} === 'dispatcher' }"
+            press=".onLeaveActivity"
+            class="fsmChatLeaveBtn" />
           <ObjectStatus
             id="connStatus"
             text="{context>/_connText}"
@@ -150,6 +159,26 @@
 
         <VBox id="msgContainer" class="fsmChatMsgContainer" width="100%">
 
+          <!-- Technician-facing room/presence label: are we talking to a
+               dispatcher in this activity, or waiting (messages routed to the
+               unattended pool for any dispatcher to pick up)? -->
+          <HBox
+            visible="{= !!${/isTechnician} &amp;&amp; !!${context>/_bound} }"
+            class="fsmChatRoomBanner {= ${/dispatcherPresent} ? 'fsmChatRoomBannerLive' : 'fsmChatRoomBannerWait' }"
+            alignItems="Center">
+            <core:Icon
+              src="{= ${/dispatcherPresent} ? 'sap-icon://connected' : 'sap-icon://pending' }"
+              class="fsmChatRoomBannerIcon" />
+            <VBox>
+              <Text
+                text="{= ${/dispatcherPresent} ? ${i18n>techDispConnected} : ${i18n>techWaiting} }"
+                class="fsmChatRoomBannerTitle" />
+              <Text
+                text="{= (${/dispatcherPresent} ? ${i18n>techDispConnectedSub} : ${i18n>techWaitingSub}) + ' \u00b7 ' + ${i18n>activityLabel} + ' ' + ${/activityCode} }"
+                class="fsmChatRoomBannerSub" />
+            </VBox>
+          </HBox>
+
           <!-- Video panel (visible during a call) -->
           <VBox
             visible="{= !!${/videoActive} }"
@@ -209,7 +238,7 @@
                 alignItems="{= ${mine} === 'mine' ? 'End' : 'Start' }">
                 <VBox class="fsmChatBubble {mine}">
                   <Text
-                    text="{senderName}"
+                    text="{= ${senderRole} ? ${senderName} + ' \u00b7 ' + ${senderRole} : ${senderName} }"
                     visible="{= ${mine} !== 'mine' }"
                     class="fsmChatSender" />
                   <Text text="{text}" class="fsmChatText" />

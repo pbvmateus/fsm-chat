@@ -230,6 +230,25 @@ sap.ui.define([
      */
     bindActivityManually: function (sActivityId) {
       this._bindToActivity(sActivityId, "manual");
+    },
+
+    /**
+     * Public: dispatcher leaves the current activity and returns to the unbound
+     * (generic inbox) state. Clears the bound flag/room so the view shows the
+     * inbox again; the controller drops the activity room on the relay, which
+     * makes the activity "unattended" again if no other dispatcher remains.
+     */
+    unbindActivity: function () {
+      var oModel = this._contextModel;
+      oModel.setProperty("/_bound", false);
+      oModel.setProperty("/roomId", "");
+      oModel.setProperty("/objectId", "");
+      oModel.setProperty("/_contextSource", "");
+      this.fireEvent("activityUnbound", {});
+    },
+
+    onActivityUnbound: function (fn) {
+      this.attachEvent("activityUnbound", function () { fn(); });
     }
   });
 });

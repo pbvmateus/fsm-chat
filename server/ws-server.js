@@ -138,13 +138,24 @@ wss.on("connection", (ws) => {
         userName: msg.userName, role: msg.role, online: true
       }, ws);
 
-      // Tell the newcomer how many peers are already here.
+      // Tell the newcomer how many peers are already here, and whether a
+      // dispatcher is among them (authoritative initial state for the
+      // technician's "waiting vs connected" label).
       try {
         ws.send(JSON.stringify({
           type: "presence", roomId: roomId,
-          online: roomSize(roomId) > 1, peerCount: roomSize(roomId) - 1, self: true
+          online: roomSize(roomId) > 1, peerCount: roomSize(roomId) - 1,
+          dispatcherPresent: dispatcherPresent(roomId), self: true
         }));
       } catch (e) { /* noop */ }
+
+      // Also re-broadcast authoritative dispatcher-presence to the room so
+      // existing members (e.g. a technician already waiting) update their label
+      // the moment a dispatcher joins.
+      broadcast(roomId, {
+        type: "presence", roomId: roomId,
+        dispatcherPresent: dispatcherPresent(roomId), roomState: true
+      }, ws);
 
       // If a dispatcher just joined the generic room, replay the backlog so
       // they see unattended messages they missed.
@@ -186,7 +197,8 @@ wss.on("connection", (ws) => {
         if (set) { set.delete(ws); if (set.size === 0) rooms.delete(roomId); }
         ws._rooms.delete(roomId);
         broadcast(roomId, { type: "presence", roomId: roomId, online: false,
-          peerCount: roomSize(roomId), userId: ws._userId, role: ws._role });
+          peerCount: roomSize(roomId), userId: ws._userId, role: ws._role,
+          dispatcherPresent: dispatcherPresent(roomId), roomState: true });
       }
       return;
     }
@@ -233,7 +245,8 @@ wss.on("connection", (ws) => {
     removeFromAllRooms(ws);
     for (const roomId of myRooms) {
       broadcast(roomId, { type: "presence", roomId: roomId, online: false,
-        peerCount: roomSize(roomId), userId: ws._userId, role: ws._role });
+        peerCount: roomSize(roomId), userId: ws._userId, role: ws._role,
+        dispatcherPresent: dispatcherPresent(roomId), roomState: true });
     }
   });
 

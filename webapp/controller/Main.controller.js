@@ -40,8 +40,13 @@ sap.ui.define([
         incomingCall: false,   // viewer: a technician is offering video
         // Generic-room (unattended messages) inbox — dispatcher only.
         isDispatcher: sRoleEarly === "dispatcher",
+        isTechnician: sRoleEarly === "technician",
         unattended: [],        // [{activityId, lastText, lastName, count, ts}]
-        unattendedCount: 0
+        unattendedCount: 0,
+        // Technician-facing: is a dispatcher currently in this activity room?
+        dispatcherPresent: false,
+        // Clean activity id for display in the header / labels.
+        activityCode: ""
       });
       this.getView().setModel(this._model);
 
@@ -69,6 +74,18 @@ sap.ui.define([
       if (typeof oComponent.onActivityBound === "function") {
         oComponent.onActivityBound(function (sRoomId) {
           that._connectRoom(sRoomId);
+        });
+      }
+
+      // When the dispatcher leaves an activity, fall back to watching the
+      // generic inbox (and the relay drops us from the activity room, making it
+      // unattended again if no other dispatcher remains).
+      if (typeof oComponent.onActivityUnbound === "function") {
+        oComponent.onActivityUnbound(function () {
+          that._model.setProperty("/dispatcherPresent", false);
+          if (that._ctxModel.getProperty("/role") === "dispatcher") {
+            that._connectGenericOnly();
+          }
         });
       }
 
@@ -121,6 +138,12 @@ sap.ui.define([
       this._model.setProperty("/peerTyping", false);
       this._currentRoom = sRoomId;
       this._ctxModel.setProperty("/_room", sRoomId);
+      // Clean activity code for labels (strip the room prefix).
+      var sCode = sRoomId.indexOf("fsm-room-") === 0
+        ? sRoomId.slice("fsm-room-".length) : sRoomId;
+      this._model.setProperty("/activityCode", sCode);
+      // Reset until the relay tells us whether a dispatcher is present.
+      this._model.setProperty("/dispatcherPresent", false);
 
       // Build a fresh per-room context object for the transport.
       var oOpts = {
@@ -293,6 +316,25 @@ sap.ui.define([
       this.getOwnerComponent().bindActivityManually(sActivityId);
     },
 
+    /**
+     * Dispatcher leaves the current activity and returns to the generic inbox.
+     * We explicitly leave the activity room on the relay first (so it can mark
+     * the activity unattended again if no other dispatcher remains), then
+     * unbind the app, which the onActivityUnbound listener turns into a
+     * generic-only reconnect.
+     */
+    onLeaveActivity: function () {
+      var sRoom = this._currentRoom;
+      if (this._transport && sRoom && sRoom.indexOf("fsm-room-") === 0 &&
+          typeof this._transport.leaveSecondaryRoom === "function") {
+        // Leave the activity room explicitly. (Even though it's the primary
+        // room here, the relay's leave handler removes us from it and
+        // recomputes dispatcher presence for any waiting technician.)
+        this._transport.leaveSecondaryRoom(sRoom);
+      }
+      this.getOwnerComponent().unbindActivity();
+    },
+
     onBindManual: function () {
       var sId = (this._model.getProperty("/manualId") || "").trim();
       if (!sId) { return; }
@@ -377,10 +419,15 @@ sap.ui.define([
       })) { return; }
 
       var oDate = oMsg.ts ? new Date(oMsg.ts) : new Date();
+      var oBundle = this.getOwnerComponent().getModel("i18n").getResourceBundle();
+      var sRoleLabel = oMsg.role === "dispatcher"
+        ? oBundle.getText("roleDispatcher")
+        : (oMsg.role === "technician" ? oBundle.getText("roleTechnician") : "");
       aMessages.push({
         msgId: oMsg.msgId,
         text: oMsg.text,
         senderName: oMsg.senderName || oMsg.userName || "?",
+        senderRole: sRoleLabel,
         mine: bMine ? "mine" : "theirs",
         time: oDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
       });
@@ -392,6 +439,13 @@ sap.ui.define([
       var sMyId = this._ctxModel.getProperty("/userId");
       if (oP.userId && oP.userId !== sMyId) {
         this._setConn("online");
+      }
+      // The relay includes an authoritative dispatcherPresent flag on the
+      // self-echo (self:true) and on room-state broadcasts (roomState:true).
+      // The technician uses it to show "waiting for dispatcher" vs "connected".
+      if (Object.prototype.hasOwnProperty.call(oP, "dispatcherPresent") &&
+          (oP.self || oP.roomState)) {
+        this._model.setProperty("/dispatcherPresent", !!oP.dispatcherPresent);
       }
     },
 
