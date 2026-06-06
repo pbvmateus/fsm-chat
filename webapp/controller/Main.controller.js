@@ -108,6 +108,9 @@ sap.ui.define([
       // Track whether the chat view is actually visible, so presence reflects
       // "in chat" rather than "socket open in the background".
       this._setupActivityTracking();
+      // Ask for notification permission (best-effort; may be unavailable in the
+      // FSM webview — we fall back to in-app sound + banner).
+      this._initNotifications();
 
       // Clean up on exit.
       this.getView().addEventDelegate({ onExit: this._teardown.bind(this) });
@@ -142,13 +145,18 @@ sap.ui.define([
     },
 
     _sendActivity: function (bActive) {
+      this._selfActive = !!bActive;
       if (this._transport && typeof this._transport.sendActivity === "function") {
         try { this._transport.sendActivity(bActive); } catch (e) { /* noop */ }
       }
+      // When the technician returns to the chat, surface any banner queued from
+      // messages that arrived while they were away.
+      if (bActive) { this._flushAwayBanner(); }
     },
 
     _setupActivityTracking: function () {
       var that = this;
+      this._selfActive = !this._isHidden();
       // Visibility change: only meaningful when unframed (mobile). For the
       // framed dispatcher this is a no-op so it stays "active" while open.
       this._onVisibility = function () {
@@ -174,6 +182,81 @@ sap.ui.define([
         if (this._onPageHide) {
           window.removeEventListener("pagehide", this._onPageHide);
         }
+      } catch (e) { /* noop */ }
+    },
+
+    // ===== Away alerts (dispatcher messaged while technician not viewing) ====
+
+    // Request notification permission once, quietly. If denied or unsupported
+    // (likely inside the FSM webview), we silently fall back to sound + banner.
+    _initNotifications: function () {
+      try {
+        if (typeof Notification !== "undefined" &&
+            Notification.permission === "default") {
+          Notification.requestPermission().catch(function () { /* noop */ });
+        }
+      } catch (e) { /* noop */ }
+    },
+
+    // Called when a peer message arrives while we're away. Best-effort on every
+    // channel; any single failure must not break the others or the chat.
+    _notifyAway: function (oMsg) {
+      var sFrom = oMsg.senderName || oMsg.userName || "Dispatcher";
+      var sText = oMsg.text || "";
+      // 1) Sound (may be blocked until first user interaction — best effort).
+      this._beep();
+      // 2) Browser notification (may not work in the FSM webview — best effort).
+      try {
+        if (typeof Notification !== "undefined" &&
+            Notification.permission === "granted") {
+          var n = new Notification(sFrom, {
+            body: sText,
+            tag: "fsm-chat-" + (this._currentRoom || "room")
+          });
+          // Focus the chat if the user taps the notification.
+          n.onclick = function () { try { window.focus(); } catch (e) {} };
+        }
+      } catch (e) { /* noop */ }
+      // 3) Queue a banner to show when they return to the chat.
+      this._awayBanner = { from: sFrom, text: sText, count:
+        ((this._awayBanner && this._awayBanner.count) || 0) + 1 };
+      // If we happen to already be visible (race), flush immediately.
+      if (this._selfActive !== false && !this._isHidden()) {
+        this._flushAwayBanner();
+      }
+    },
+
+    _flushAwayBanner: function () {
+      if (!this._awayBanner) { return; }
+      var b = this._awayBanner;
+      this._awayBanner = null;
+      try {
+        var oBundle = this.getOwnerComponent().getModel("i18n").getResourceBundle();
+        var sMsg = b.count > 1
+          ? oBundle.getText("awayMsgsToast", [b.count, b.from])
+          : oBundle.getText("awayMsgToast", [b.from]);
+        MessageToast.show(sMsg, { duration: 4000 });
+      } catch (e) { /* noop */ }
+    },
+
+    // Short WebAudio beep — no audio asset needed. Guarded; silent on failure.
+    _beep: function () {
+      try {
+        var AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) { return; }
+        if (!this._audioCtx) { this._audioCtx = new AC(); }
+        var ctx = this._audioCtx;
+        // Browsers may start the context suspended until a user gesture.
+        if (ctx.state === "suspended" && ctx.resume) { ctx.resume(); }
+        var osc = ctx.createOscillator();
+        var gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.value = 880;
+        gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35);
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.start(); osc.stop(ctx.currentTime + 0.36);
       } catch (e) { /* noop */ }
     },
 
@@ -475,6 +558,12 @@ sap.ui.define([
         var sName = oMsg.senderName || oMsg.userName;
         if (sName && this._model.getProperty("/peerName") !== sName) {
           this._model.setProperty("/peerName", sName);
+        }
+        // If this message arrived while we're NOT actively viewing the chat
+        // (e.g. technician backgrounded the app), alert them: sound + a
+        // best-effort browser notification now, and a banner when they return.
+        if (this._selfActive === false || this._isHidden()) {
+          this._notifyAway(oMsg);
         }
       }
       this._appendMessage(oMsg, oMsg.userId === sMyId);
