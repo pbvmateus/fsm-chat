@@ -105,6 +105,10 @@ sap.ui.define([
         this._connectGenericOnly();
       }
 
+      // Track whether the chat view is actually visible, so presence reflects
+      // "in chat" rather than "socket open in the background".
+      this._setupActivityTracking();
+
       // Clean up on exit.
       this.getView().addEventDelegate({ onExit: this._teardown.bind(this) });
     },
@@ -116,10 +120,48 @@ sap.ui.define([
     _teardown: function () {
       if (this._typingStopTimer) { clearTimeout(this._typingStopTimer); }
       if (this._video) { this._video.hangup(); this._video = null; }
+      this._teardownActivityTracking();
       if (this._transport) {
         this._transport.disconnect();
         this._transport = null;
       }
+    },
+
+    _isHidden: function () {
+      return (typeof document !== "undefined") && document.hidden === true;
+    },
+
+    _sendActivity: function (bActive) {
+      if (this._transport && typeof this._transport.sendActivity === "function") {
+        try { this._transport.sendActivity(bActive); } catch (e) { /* noop */ }
+      }
+    },
+
+    _setupActivityTracking: function () {
+      var that = this;
+      // Visibility change: chat tab/app foregrounded or backgrounded.
+      this._onVisibility = function () {
+        that._sendActivity(!that._isHidden());
+      };
+      // Page being hidden/unloaded (navigated away, app closing): mark inactive.
+      this._onPageHide = function () {
+        that._sendActivity(false);
+      };
+      if (typeof document !== "undefined" && document.addEventListener) {
+        document.addEventListener("visibilitychange", this._onVisibility);
+        window.addEventListener("pagehide", this._onPageHide);
+      }
+    },
+
+    _teardownActivityTracking: function () {
+      try {
+        if (this._onVisibility) {
+          document.removeEventListener("visibilitychange", this._onVisibility);
+        }
+        if (this._onPageHide) {
+          window.removeEventListener("pagehide", this._onPageHide);
+        }
+      } catch (e) { /* noop */ }
     },
 
     /**
@@ -171,6 +213,11 @@ sap.ui.define([
       this._transport = ChatTransport.create(oOpts, {
         onOpen: function () {
           that._setConn("online");
+          // Report current chat-view visibility so presence is accurate from
+          // the start (and after any reconnect).
+          try {
+            that._transport.sendActivity(!that._isHidden());
+          } catch (e) { /* noop */ }
           // Dispatchers also watch the shared generic room for unattended
           // messages (technician messages sent while no dispatcher was in the
           // activity room). Joining rides the same socket; re-joining on each

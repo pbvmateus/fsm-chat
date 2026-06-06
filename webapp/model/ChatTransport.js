@@ -155,6 +155,12 @@ sap.ui.define([], function () {
     }, payload));
   };
 
+  // Report whether the chat view is currently visible/active to the user, so
+  // the relay can base presence on "in chat" rather than "socket open".
+  WebSocketTransport.prototype.sendActivity = function (bActive) {
+    this._raw({ type: "activity", active: !!bActive });
+  };
+
   WebSocketTransport.prototype.disconnect = function () {
     this._closedByUser = true;
     if (this._ws) {
@@ -326,6 +332,7 @@ sap.ui.define([], function () {
     return "fsm-room-" + sActivityId;
   };
   LocalTransport.prototype.leaveSecondaryRoom = function () { /* noop */ };
+  LocalTransport.prototype.sendActivity = function () { /* noop */ };
 
   // Signaling over BroadcastChannel (same-machine only; real cross-device video
   // requires the relay). Provided so the API matches WebSocketTransport.

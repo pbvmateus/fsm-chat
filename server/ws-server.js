@@ -41,7 +41,7 @@ const GENERIC_MAX = 200;            // cap retained unattended messages
 const GENERIC_TTL_MS = 24 * 60 * 60 * 1000; // drop entries older than 24h
 
 // Bump this when deploying so /rooms confirms the running build is current.
-const BUILD_MARKER = "presence-diag-1";
+const BUILD_MARKER = "presence-active-1";
 // Liveness ping interval (also used by the heartbeat below).
 const HEARTBEAT_MS = 10000;
 
@@ -68,6 +68,7 @@ const server = http.createServer((req, res) => {
             role: ws._role || null,
             userName: ws._userName || null,
             userId: ws._userId || null,
+            active: ws._active !== false,
             readyState: ws.readyState,
             isAlive: ws.isAlive !== false,
             secsSinceJoin: ws._joinedAt ? Math.round((now - ws._joinedAt) / 1000) : null,
@@ -115,13 +116,17 @@ function roomSize(roomId) {
   return rooms.has(roomId) ? rooms.get(roomId).size : 0;
 }
 
-// Is at least one peer of the given role currently present in this room?
+// Is at least one peer of the given role ACTIVELY in this room? "Active" means
+// the socket is open AND the client reports its chat view is visible (not
+// backgrounded / navigated away). A mobile webview often keeps the socket open
+// in the background, so socket-open alone is NOT a reliable "in chat" signal —
+// we track an explicit _active flag the client updates via 'activity' messages.
 function rolePresent(roomId, role) {
   const set = rooms.get(roomId);
   if (!set) return false;
   for (const peer of set) {
-    if ((peer.readyState === peer.OPEN || peer.readyState === 1) &&
-        peer._role === role) return true;
+    var open = (peer.readyState === peer.OPEN || peer.readyState === 1);
+    if (open && peer._active !== false && peer._role === role) return true;
   }
   return false;
 }
@@ -163,6 +168,7 @@ function activityIdFromRoom(roomId) {
 wss.on("connection", (ws) => {
   ws.isAlive = true;
   ws._role = null;
+  ws._active = true;       // chat view assumed visible until told otherwise
   ws._lastPong = Date.now();
   ws.on("pong", () => { ws.isAlive = true; ws._lastPong = Date.now(); });
 
@@ -233,6 +239,27 @@ wss.on("connection", (ws) => {
             type: "generic-claimed", activityId: activityId,
             byName: ws._userName || msg.userName || "A dispatcher"
           });
+        }
+      }
+      return;
+    }
+
+    // ---- chat-view activity (visible/hidden) ----------------------------
+    // The client sends { type:'activity', active:true|false } from the Page
+    // Visibility API so presence reflects whether the chat is actually in front
+    // of the user, not merely whether the socket is open in the background.
+    if (msg.type === "activity") {
+      ws._active = msg.active !== false;
+      // Refresh presence in every room this socket belongs to so the other
+      // side's "in chat" indicator updates right away.
+      if (ws._rooms) {
+        for (const roomId of ws._rooms) {
+          if (roomId === GENERIC_ROOM) continue;
+          broadcast(roomId, {
+            type: "presence", roomId: roomId, roomState: true,
+            dispatcherPresent: dispatcherPresent(roomId),
+            technicianPresent: technicianPresent(roomId)
+          }, ws);
         }
       }
       return;
