@@ -195,10 +195,10 @@ sap.ui.define([
 
     _apiCtx: function () {
       var m = this._ctxModel;
-      var host = m.getProperty("/fsmHost");
-      if (host && host.indexOf("http") !== 0) { host = "https://" + host; }
+      // fsmHost is the bare clusterHost (e.g. "us.fsm.cloud.sap") — no https://.
+      // We add https:// here when building URLs, same as fsm-api.js does.
       return {
-        host: host,
+        host: m.getProperty("/fsmHost"),
         account: m.getProperty("/fsmAccount"),
         company: m.getProperty("/fsmCompany"),
         token: m.getProperty("/fsmToken")
@@ -215,10 +215,13 @@ sap.ui.define([
       var r = this._apiCtx();
       if (!r.host || !r.account || !r.company || !r.token) {
         this._apiTestShow({
-          error: "Missing FSM context — the shell did not provide one of host/account/company/token.",
+          error: "Missing FSM context.",
           have: { host: r.host, account: r.account, company: r.company,
             token: r.token ? ("present(" + String(r.token).length + " chars)") : "MISSING" },
-          note: "If token is MISSING, the shell SDK version may not expose authToken to web containers — that itself is the key finding."
+          authRaw: this._ctxModel.getProperty("/fsmAuthRaw") || "(auth field not received)",
+          note: "If token is MISSING: the REQUIRE_AUTHENTICATION event has not returned a token yet. " +
+            "This can mean (a) the shell hasn't responded yet — wait a moment and retry; " +
+            "(b) the extension clientIdentifier is not recognized by the shell."
         });
         return;
       }
@@ -227,9 +230,11 @@ sap.ui.define([
         method: sMethod || "GET",
         headers: {
           "Content-Type": "application/json",
-          "X-Client-ID": "fsm-chat-apitest",
-          "X-Client-Version": "1.0.0",
-          "Authorization": "bearer " + r.token
+          "X-Client-ID": "fsm-chat-extension",
+          "X-Client-Version": "1.0",
+          "X-Account-Name": r.account,
+          "X-Company-Name": r.company,
+          "Authorization": "Bearer " + r.token  // capital B — matches fsm-api.js
         }
       };
       if (oBody) { opts.body = JSON.stringify(oBody); }
@@ -239,13 +244,13 @@ sap.ui.define([
           var body; try { body = JSON.parse(text); } catch (e) { body = text; }
           var verdict;
           if (looksHtml) {
-            verdict = "WRONG TARGET: HTML came back (the chat app), not FSM. The call was redirected/blocked before reaching the API — almost certainly CORS. Direct browser calls to FSM may not be possible; we'd route via the relay instead.";
+            verdict = "WRONG TARGET: HTML came back, not FSM — call was redirected/blocked (CORS?).";
           } else if (res.ok) {
             verdict = "OK: real FSM API JSON response.";
           } else if (res.status === 401 || res.status === 403) {
-            verdict = "AUTH REJECTED: FSM reached but refused the token (" + res.status + ").";
+            verdict = "AUTH REJECTED: FSM reached but refused the token (" + res.status + "). Token may need refresh.";
           } else {
-            verdict = "Reached FSM, status " + res.status + " — inspect body (may be a DTO-version issue).";
+            verdict = "Reached FSM, status " + res.status + " — inspect body.";
           }
           that._apiTestShow({
             verdict: verdict, requestUrl: sUrl, finalUrl: res.url,
@@ -256,16 +261,18 @@ sap.ui.define([
       }).catch(function (e) {
         that._apiTestShow({
           requestUrl: sUrl, error: e.message,
-          hint: "A CORS/network error here means the browser blocked the cross-origin call to FSM. That is the decisive finding: the Data API can't be called directly from the dispatcher's browser, so the broadcast feature must proxy through the relay server-side."
+          hint: "CORS/network error — the browser blocked the cross-origin call. " +
+            "That means the Data API cannot be called directly from the browser; " +
+            "calls must be proxied through the relay server-side."
         });
       });
     },
 
     onApiTestPersons: function () {
       var r = this._apiCtx();
-      // Person v25; technicians are EMPLOYEE-type persons that are plannable.
+      // Person v25; technicians = EMPLOYEE type + plannableResource = true.
       // 'regions' is the Set<Identifier> linking a person to Region(s).
-      var u = (r.host || "") + "/api/data/v4/Person?dtos=Person.25" +
+      var u = "https://" + r.host + "/api/data/v4/Person?dtos=Person.25" +
         "&account=" + encodeURIComponent(r.account || "") +
         "&company=" + encodeURIComponent(r.company || "") +
         "&pageSize=20&fields=" +
@@ -276,8 +283,7 @@ sap.ui.define([
 
     onApiTestRegions: function () {
       var r = this._apiCtx();
-      // Region v10: code, name, parentId (hierarchy).
-      var u = (r.host || "") + "/api/data/v4/Region?dtos=Region.10" +
+      var u = "https://" + r.host + "/api/data/v4/Region?dtos=Region.10" +
         "&account=" + encodeURIComponent(r.account || "") +
         "&company=" + encodeURIComponent(r.company || "") +
         "&pageSize=50&fields=" + encodeURIComponent("id,code,name,parentId");
@@ -286,9 +292,9 @@ sap.ui.define([
 
     onApiTestQuery: function () {
       var r = this._apiCtx();
-      var u = (r.host || "") + "/api/query/v1?account=" + encodeURIComponent(r.account || "") +
+      var u = "https://" + r.host + "/api/query/v1?account=" +
+        encodeURIComponent(r.account || "") +
         "&company=" + encodeURIComponent(r.company || "") + "&dtos=Person.25";
-      // CoreSQL cross-check with the corrected field/type.
       var sql = "SELECT p.id, p.firstName, p.lastName, p.userName, p.regions " +
         "FROM Person p WHERE p.plannableResource = true AND p.type = 'EMPLOYEE'";
       this._apiTestRun(u, "POST", { query: sql });

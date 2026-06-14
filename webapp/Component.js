@@ -153,7 +153,24 @@ sap.ui.define([
       }
 
       this._shell.init(
-        { clientIdentifier: "fsm-chat-extension", debug: bDebug },
+        {
+          clientIdentifier: "fsm-chat-extension",
+          debug: bDebug,
+          // onToken is called by FsmShell when REQUIRE_AUTHENTICATION returns a
+          // token (and again on proactive/reactive refresh). Store the token and
+          // schedule a proactive refresh 30s before it expires.
+          onToken: function (sToken, nExpiresIn) {
+            oModel.setProperty("/fsmToken", sToken);
+            // Schedule proactive refresh.
+            if (that._tokenRefreshTimer) { clearTimeout(that._tokenRefreshTimer); }
+            var refreshIn = Math.max(((nExpiresIn || 300) - 30) * 1000, 10000);
+            that._tokenRefreshTimer = setTimeout(function () {
+              if (that._shell && typeof that._shell.refreshToken === "function") {
+                that._shell.refreshToken();
+              }
+            }, refreshIn);
+          }
+        },
         function onContext(ctx) {
           oModel.setProperty("/_shellReady", true);
           if (!ctx) { return; }
@@ -172,20 +189,21 @@ sap.ui.define([
           if (ctx.targetOutletName) {
             oModel.setProperty("/outlet", ctx.targetOutletName);
           }
-          // Capture FSM auth context for Data API calls (broadcast feature /
-          // inline API test). These may be absent depending on SDK version.
-          var sAccount = ctx.account || ctx.cloudAccount || ctx.accountName || null;
+          // Capture FSM env context for Data API calls.
+          // cloudHost is the bare hostname (e.g. "us.fsm.cloud.sap"), used
+          // as clusterHost in API calls — matching the confirmed fsm-api.js.
+          var sAccount = ctx.account || ctx.cloudAccount || null;
           var sCompany = ctx.company || ctx.companyName || null;
-          var sToken = ctx.authToken || ctx.auth ||
-            (ctx.data && ctx.data.authToken) || null;
-          var sHost = ctx.cloudHost || ctx.dataCloudFullQualifiedDomainName ||
-            ctx.cloudFullQualifiedDomainName ||
-            (ctx.data && ctx.data.dataCloudFullQualifiedDomainName) || null;
-          if (sHost && sHost.indexOf("http") !== 0) { sHost = "https://" + sHost; }
+          var sHost = ctx.cloudHost || null;  // bare hostname, no https://
+          // Token may arrive in context on some shell versions; FsmShell's
+          // onToken callback via REQUIRE_AUTHENTICATION is the primary path.
+          var sToken = (ctx.auth && ctx.auth.access_token) || ctx.authToken || null;
           if (sAccount) oModel.setProperty("/fsmAccount", sAccount);
           if (sCompany) oModel.setProperty("/fsmCompany", sCompany);
-          if (sToken) oModel.setProperty("/fsmToken", sToken);
           if (sHost) oModel.setProperty("/fsmHost", sHost);
+          if (sToken) oModel.setProperty("/fsmToken", sToken);
+          // Store the raw auth object for diagnostics.
+          oModel.setProperty("/fsmAuthRaw", JSON.stringify(ctx.auth || null));
         },
         function onSelection(activityId) {
           // The Shell told us which Service Call / Activity is selected.

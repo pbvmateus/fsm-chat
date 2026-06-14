@@ -178,62 +178,97 @@ sap.ui.define([], function () {
       return;
     }
 
-    // --- 1. Listen for context responses BEFORE emitting the request. ---
-    // IMPORTANT: for a context-bound outlet (e.g. the dispatching-board
-    // activity sidebar), the Shell re-emits REQUIRE_CONTEXT every time the
-    // dispatcher selects a different activity. We must therefore handle EVERY
-    // emit, not just the first — the selected activity travels in this payload.
+    // --- 1. Listen for responses BEFORE emitting. ---
+
+    // REQUIRE_CONTEXT: returns cloudHost/account/company/user.
+    // For extensions the Shell does NOT return a token here — the token
+    // comes separately from REQUIRE_AUTHENTICATION (per confirmed working
+    // Custom Objects Manager pattern). Do NOT pass clientSecret or auth
+    // in the emit — that is wrong for extensions; it's ignored/harmful.
     var firstContextSeen = false;
     try {
       this._sdk.on(SHELL_EVENTS.Version1.REQUIRE_CONTEXT, function (payload) {
         var ctx = null;
         try {
           ctx = (typeof payload === "string") ? JSON.parse(payload) : payload;
-        } catch (parseErr) {
-          ctx = null;
-        }
+        } catch (parseErr) { ctx = null; }
 
         if (that._debug) {
           var keys = ctx && typeof ctx === "object"
             ? Object.keys(ctx).join(", ") : "(none)";
           that._rawLog.push("REQUIRE_CONTEXT keys: " + keys);
-          if (ctx && ctx.data) {
-            that._rawLog.push("  context.data keys: " +
-              Object.keys(ctx.data).join(", "));
-          }
           if (typeof that._onDebug === "function") {
             that._onDebug(that._rawLog.slice());
           }
         }
 
-        // First emit: hand identity/company up to the caller and wire the
-        // secondary selection channels.
         if (!firstContextSeen) {
           firstContextSeen = true;
+          // Check if token came with context (some shell versions include it).
+          var t = (ctx && ctx.auth && ctx.auth.access_token) ||
+                  (ctx && ctx.authToken) || null;
+          if (t && typeof opts.onToken === "function") {
+            opts.onToken(t, 300);
+          }
           onContext && onContext(ctx);
           that._wireSelectionListeners();
+
+          // If no token in context, request it explicitly via REQUIRE_AUTHENTICATION.
+          if (!t) {
+            if (that._debug) { that._rawLog.push("→ No token in context, emitting REQUIRE_AUTHENTICATION"); }
+            try {
+              that._sdk.emit(SHELL_EVENTS.Version1.REQUIRE_AUTHENTICATION,
+                { response_type: "token" });
+            } catch (e) { /* noop */ }
+          }
         }
 
-        // Every emit (including the first): try to pull the selected
-        // activity / service call id out of the context payload itself.
-        // The dispatching board places it here under one of these shapes.
         if (ctx) {
           var sId = that._extractActivityFromContext(ctx);
-          if (sId) {
-            that._deliverSelection(sId);
-          }
+          if (sId) { that._deliverSelection(sId); }
         }
       });
     } catch (e) {
       onContext && onContext(null);
     }
 
-    // Surface SDK errors but never let them break the app.
+    // REQUIRE_AUTHENTICATION: returns the access_token for API calls.
+    // Also handles proactive and reactive token refresh.
+    try {
+      this._sdk.on(SHELL_EVENTS.Version1.REQUIRE_AUTHENTICATION, function (auth) {
+        if (typeof auth === "string") {
+          try { auth = JSON.parse(auth); } catch (e) { /* noop */ }
+        }
+        var t = (auth && auth.access_token) ||
+                (auth && auth.auth && auth.auth.access_token) || null;
+        if (t && typeof opts.onToken === "function") {
+          var expiresIn = (auth && auth.expires_in) || 300;
+          opts.onToken(t, expiresIn);
+          if (that._debug) {
+            that._rawLog.push("✓ REQUIRE_AUTHENTICATION token (expires_in=" + expiresIn + "s)");
+            if (typeof that._onDebug === "function") { that._onDebug(that._rawLog.slice()); }
+          }
+        } else if (that._debug) {
+          that._rawLog.push("✗ REQUIRE_AUTHENTICATION gave no token: " + JSON.stringify(auth));
+          if (typeof that._onDebug === "function") { that._onDebug(that._rawLog.slice()); }
+        }
+      });
+    } catch (e) { /* noop */ }
+
+    // Expose a refresh method so the Component can reactively refresh on 401.
+    this.refreshToken = function () {
+      try {
+        that._sdk.emit(SHELL_EVENTS.Version1.REQUIRE_AUTHENTICATION,
+          { response_type: "token" });
+      } catch (e) { /* noop */ }
+    };
+
+    // Surface SDK errors.
     try {
       this._sdk.on(SHELL_EVENTS.ERROR, function () { /* swallow */ });
     } catch (e) { /* noop */ }
 
-    // --- 2. Emit REQUIRE_CONTEXT to kick things off. ---
+    // --- 2. Emit REQUIRE_CONTEXT (clientIdentifier only — no secret, no auth). ---
     try {
       this._sdk.emit(SHELL_EVENTS.Version1.REQUIRE_CONTEXT, {
         clientIdentifier: (opts && opts.clientIdentifier) || "fsm-chat-extension"
