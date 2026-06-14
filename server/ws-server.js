@@ -292,12 +292,12 @@ wss.on("connection", (ws) => {
         fsmUrl = `https://${clusterHost}/api/query/v1?account=${encodeURIComponent(account)}&company=${encodeURIComponent(company)}&dtos=Person.25;Region.10`;
         fetchOpts = { method: "POST", headers, body: JSON.stringify({ query: sql }) };
       } else if (resource === "persons") {
-        fsmUrl = `https://${clusterHost}/api/data/v4/Person?dtos=Person.25` +
-          `&account=${encodeURIComponent(account)}&company=${encodeURIComponent(company)}` +
-          `&pageSize=200&fields=${encodeURIComponent("id,firstName,lastName,userName,type,plannableResource,regions")}` +
-          `&filter=${encodeURIComponent("plannableResource==true;type==EMPLOYEE")}`;
-        fetchOpts = { method: "GET", headers };
+        // Data API v4 does not support a 'filter' param — use Query API with CoreSQL.
+        fsmUrl = `https://${clusterHost}/api/query/v1?account=${encodeURIComponent(account)}&company=${encodeURIComponent(company)}&dtos=Person.25`;
+        const personSQL = "SELECT p.id, p.firstName, p.lastName, p.userName, p.type, p.plannableResource, p.regions FROM Person p WHERE p.plannableResource = true AND p.type = 'EMPLOYEE'";
+        fetchOpts = { method: "POST", headers, body: JSON.stringify({ query: personSQL }) };
       } else if (resource === "regions") {
+        // Region — Data API v4 with just allowed params (no filter needed, fetch all).
         fsmUrl = `https://${clusterHost}/api/data/v4/Region?dtos=Region.10` +
           `&account=${encodeURIComponent(account)}&company=${encodeURIComponent(company)}` +
           `&pageSize=200&fields=${encodeURIComponent("id,code,name,parentId")}`;
