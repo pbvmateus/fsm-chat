@@ -380,3 +380,11 @@ html, body, #content, .sapMShell, .sapMApp {
 .fsmChatBroadcastPreview { margin-bottom: 0.5rem; }
 .fsmChatBroadcastPreviewItem { padding: 0.25rem 0; }
 .fsmChatBroadcastMsg { padding: 0.25rem 0; gap: 0.25rem; }
+
+/* Broadcast individual picker — selected row highlight */
+.fsmChatBroadcastItemSel {
+  background: var(--sapSuccessBackground, #f1fdf6);
+  border-left: 3px solid var(--sapPositiveColor, #30914c);
+}
+.fsmChatBroadcastIconSel { color: var(--sapPositiveColor, #30914c); }
+.fsmChatBroadcastIconUnsel { color: #bbb; }
