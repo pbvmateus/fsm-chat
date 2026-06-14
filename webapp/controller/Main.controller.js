@@ -1040,31 +1040,40 @@ sap.ui.define([
       };
 
       this._appendMessage(oMsg, true);
-      this._transport.send(oMsg);
+      // If we're in a direct-chat room, send via direct-chat so the relay
+      // routes it correctly (and stamps role) — otherwise normal chat.
+      if (this._currentRoom && this._currentRoom.indexOf("fsm-direct-") === 0 &&
+          typeof this._transport.sendDirectChat === "function") {
+        this._transport.sendDirectChat(sText, this._currentRoom);
+      } else {
+        this._transport.send(oMsg);
+      }
       this._transport.sendTyping(false);
       this._model.setProperty("/draft", "");
     },
 
     _onIncoming: function (oMsg) {
       var sMyId = this._ctxModel.getProperty("/userId");
-      if (oMsg.userId === sMyId) {
+      var sMyRole = this._ctxModel.getProperty("/role");
+      // "Mine" only if same userId AND same role. In test tenants the dispatcher
+      // and technician may share a userName, so never rely on userName here; and
+      // role guards against userId coincidences.
+      var bMine = (oMsg.userId === sMyId) &&
+                  (!oMsg.role || !sMyRole || oMsg.role === sMyRole);
+      if (bMine) {
         var existing = this._model.getProperty("/messages")
           .some(function (m) { return m.msgId === oMsg.msgId; });
         if (existing) { return; }
       } else {
-        // Learn the other party's name from their message (used in the header).
         var sName = oMsg.senderName || oMsg.userName;
         if (sName && this._model.getProperty("/peerName") !== sName) {
           this._model.setProperty("/peerName", sName);
         }
-        // If this message arrived while we're NOT actively viewing the chat
-        // (e.g. technician backgrounded the app), alert them: sound + a
-        // best-effort browser notification now, and a banner when they return.
         if (this._selfActive === false || this._isHidden()) {
           this._notifyAway(oMsg);
         }
       }
-      this._appendMessage(oMsg, oMsg.userId === sMyId);
+      this._appendMessage(oMsg, bMine);
       this._onPeerTyping(false);
     },
 
