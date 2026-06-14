@@ -769,11 +769,7 @@ sap.ui.define([
         onPresence: function (p) { that._onPresence(p); },
         onTyping: function (b) { that._onPeerTyping(b); },
         onSignal: function (sig) { that._onSignal(sig); },
-        onDirectChat: function (m) {
-          // TEMP DIAGNOSTIC: confirm direct-chat messages reach the dispatcher.
-          try { MessageToast.show("DBG rx direct-chat: " + (m && m.text) + " role=" + (m && m.role)); } catch(e){}
-          that._onIncoming(m);
-        },
+        onDirectChat: function (m) { that._onIncoming(m); },
         onGenericMessage: function (g) { that._onGenericMessage(g); },
         onGenericBacklog: function (g) { that._onGenericBacklog(g); },
         onGenericClaimed: function (g) { that._onGenericClaimed(g); },

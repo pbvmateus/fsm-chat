@@ -64,7 +64,7 @@ function getBroadcastHistory(userKey) {
 }
 
 // Bump this when deploying so /rooms confirms the running build is current.
-const BUILD_MARKER = "presence-active-3";
+const BUILD_MARKER = "dispatcher-evict-1";
 // Liveness ping interval (also used by the heartbeat below).
 const HEARTBEAT_MS = 10000;
 
@@ -211,7 +211,25 @@ wss.on("connection", (ws) => {
 
       addToRoom(roomId, ws);
 
-      // Every technician also joins two personal rooms keyed by userName
+      // Dispatcher de-duplication for the generic room ONLY. Dispatchers can
+      // accumulate stale-but-alive sockets across page reloads (the old socket
+      // lingers if the shell keeps the prior iframe briefly alive). Multiple
+      // live dispatcher sockets cause direct-chat delivery to land on a socket
+      // whose UI isn't the active one. When a dispatcher (re)joins fsm-generic,
+      // close older sockets from the same userId. This is SAFE here (unlike the
+      // technician case) because a dispatcher uses a single transport — there's
+      // no bg/DirectChat split to disrupt, so no reconnect storm.
+      if (roomId === GENERIC_ROOM && msg.role === "dispatcher" && msg.userId) {
+        const set = rooms.get(GENERIC_ROOM);
+        if (set) {
+          for (const peer of Array.from(set)) {
+            if (peer !== ws && peer._role === "dispatcher" &&
+                peer._userId === msg.userId) {
+              try { peer.close(1000, "superseded-by-newer-dispatcher-session"); } catch (e) {}
+            }
+          }
+        }
+      }
       // (lowercased for consistency). userName is stable across both the FSM
       // Person roster (where the dispatcher picks targets) and the mobile
       // context — unlike userId which is numeric on mobile but a GUID in the

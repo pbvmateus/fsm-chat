@@ -256,8 +256,6 @@ sap.ui.define([
       this._model.setProperty("/directMessages", aMessages);
       this._model.setProperty("/directDraft", "");
       if (typeof this._transport.sendDirectChat === "function") {
-        // TEMP DIAGNOSTIC: confirm the technician is sending and to which room.
-        try { MessageToast.show("DBG tx to " + this._directRoom); } catch(e){}
         this._transport.sendDirectChat(sText, this._directRoom);
       }
       setTimeout(this._scrollToBottom.bind(this), 80);
