@@ -97,8 +97,6 @@ sap.ui.define([
       if (this._bgTransport) { return; } // already running
       var oModel = this._contextModel;
       var sUserKey = sUserName.toLowerCase();
-      // Connect to the personal room — the relay auto-joins fsm-user-<key>
-      // and fsm-direct-<key> when the technician sends a join message here.
       var oOpts = {
         roomId: "fsm-user-" + sUserKey,
         userId: oModel.getProperty("/userId"),
@@ -106,18 +104,24 @@ sap.ui.define([
         role: "technician"
       };
       var that = this;
-      // Lazy-load ChatTransport.
+      var nReconnectDelay = 5000; // start at 5s, doubles each time, max 60s
+
       sap.ui.require(["com/test/fsmchat/model/ChatTransport"], function (ChatTransport) {
         that._bgTransport = ChatTransport.create(oOpts, {
-          onOpen: function () { /* background, no UI feedback needed */ },
-          onClose: function () {
-            // Reconnect after a delay if closed unexpectedly.
-            setTimeout(function () {
-              if (that._bgTransport) {
-                that._bgTransport = null;
-                that._initBgTransport(sUserName);
-              }
-            }, 5000);
+          onOpen: function () {
+            nReconnectDelay = 5000; // reset backoff on successful connect
+          },
+          onClose: function (nCode) {
+            // Don't reconnect if we closed it intentionally (superseded by a
+            // restart with a new userName) or if the Component is destroyed.
+            if (!that._bgReconnectEnabled) { return; }
+            var delay = nReconnectDelay;
+            nReconnectDelay = Math.min(nReconnectDelay * 2, 60000);
+            that._bgReconnectTimer = setTimeout(function () {
+              if (!that._bgReconnectEnabled) { return; }
+              that._bgTransport = null;
+              that._initBgTransport(sUserName);
+            }, delay);
           },
     onBroadcastHistory: function (data) {
             // Relay replayed broadcasts sent while this technician was offline.
@@ -186,6 +190,7 @@ sap.ui.define([
           onGenericClaimed: function () {},
           onFsmRoster: function () {}
         });
+        that._bgReconnectEnabled = true;
         that._bgTransport.connect();
       });
     },
@@ -216,6 +221,8 @@ sap.ui.define([
       if (this._shell && typeof this._shell.destroy === "function") {
         this._shell.destroy();
       }
+      this._bgReconnectEnabled = false;
+      if (this._bgReconnectTimer) { clearTimeout(this._bgReconnectTimer); }
       if (this._bgTransport) {
         this._bgTransport.disconnect();
         this._bgTransport = null;
@@ -376,6 +383,8 @@ sap.ui.define([
             var sBgUser = that._bgTransport &&
               that._bgTransport._opts && that._bgTransport._opts.userName;
             if (sBgUser && sBgUser.toLowerCase() !== sCtxUser.toLowerCase()) {
+              this._bgReconnectEnabled = false;
+              if (this._bgReconnectTimer) { clearTimeout(this._bgReconnectTimer); }
               if (that._bgTransport) {
                 that._bgTransport.disconnect();
                 that._bgTransport = null;

@@ -750,11 +750,18 @@ sap.ui.define([
       if (this._transport) { this._transport.disconnect(); this._transport = null; }
       this._currentRoom = "fsm-generic";
 
+      // Use the real userName from context if available; otherwise the
+      // placeholder. The transport opts are cosmetic (displayed in /rooms)
+      // but we try to use the real identity when possible.
+      var sUserName = this._ctxModel.getProperty("/userName") || "Dispatcher";
+      var sUserId   = this._ctxModel.getProperty("/userId")   || "";
+      var sRole     = this._ctxModel.getProperty("/role")     || "dispatcher";
+
       var oOpts = {
         roomId: "fsm-generic",
-        userId: this._ctxModel.getProperty("/userId"),
-        userName: this._ctxModel.getProperty("/userName"),
-        role: this._ctxModel.getProperty("/role")
+        userId: sUserId,
+        userName: sUserName,
+        role: sRole
       };
       this._setConn("connecting");
       var that = this;
