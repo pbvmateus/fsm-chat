@@ -265,6 +265,68 @@ wss.on("connection", (ws) => {
       return;
     }
 
+    // ---- FSM API proxy (dispatcher only) --------------------------------
+    // The browser cannot call the FSM Data API directly due to CORS. The
+    // relay proxies the call server-side where there is no CORS restriction.
+    // Message: { type:'fsm-fetch', resource:'persons'|'regions'|'query',
+    //            token, account, company, clusterHost, [sql] }
+    // Response: { type:'fsm-roster', resource, ok, status, data, error }
+    if (msg.type === "fsm-fetch") {
+      if (ws._role !== "dispatcher") { return; } // only dispatchers may proxy
+      const { resource, token, account, company, clusterHost, sql } = msg;
+      if (!token || !account || !company || !clusterHost) {
+        try { ws.send(JSON.stringify({ type: "fsm-roster", resource,
+          ok: false, error: "Missing token/account/company/clusterHost" })); } catch(e){}
+        return;
+      }
+      const headers = {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + token,
+        "X-Client-ID": "fsm-chat-extension",
+        "X-Client-Version": "1.0",
+        "X-Account-Name": account,
+        "X-Company-Name": company
+      };
+      let fsmUrl, fetchOpts;
+      if (resource === "query" && sql) {
+        fsmUrl = `https://${clusterHost}/api/query/v1?account=${encodeURIComponent(account)}&company=${encodeURIComponent(company)}&dtos=Person.25;Region.10`;
+        fetchOpts = { method: "POST", headers, body: JSON.stringify({ query: sql }) };
+      } else if (resource === "persons") {
+        fsmUrl = `https://${clusterHost}/api/data/v4/Person?dtos=Person.25` +
+          `&account=${encodeURIComponent(account)}&company=${encodeURIComponent(company)}` +
+          `&pageSize=200&fields=${encodeURIComponent("id,firstName,lastName,userName,type,plannableResource,regions")}` +
+          `&filter=${encodeURIComponent("plannableResource==true;type==EMPLOYEE")}`;
+        fetchOpts = { method: "GET", headers };
+      } else if (resource === "regions") {
+        fsmUrl = `https://${clusterHost}/api/data/v4/Region?dtos=Region.10` +
+          `&account=${encodeURIComponent(account)}&company=${encodeURIComponent(company)}` +
+          `&pageSize=200&fields=${encodeURIComponent("id,code,name,parentId")}`;
+        fetchOpts = { method: "GET", headers };
+      } else {
+        try { ws.send(JSON.stringify({ type: "fsm-roster", resource,
+          ok: false, error: "Unknown resource: " + resource })); } catch(e){}
+        return;
+      }
+      // Node's built-in fetch (v18+) or fall back gracefully.
+      const doFetch = typeof fetch === "function" ? fetch : null;
+      if (!doFetch) {
+        try { ws.send(JSON.stringify({ type: "fsm-roster", resource, ok: false,
+          error: "Node version does not support fetch. Upgrade to Node 18+." })); } catch(e){}
+        return;
+      }
+      doFetch(fsmUrl, fetchOpts)
+        .then(res => res.json().then(data => ({ status: res.status, ok: res.ok, data })))
+        .then(({ status, ok, data }) => {
+          try { ws.send(JSON.stringify({ type: "fsm-roster", resource, ok, status, data })); }
+          catch(e){}
+        })
+        .catch(err => {
+          try { ws.send(JSON.stringify({ type: "fsm-roster", resource, ok: false,
+            error: err.message })); } catch(e){}
+        });
+      return;
+    }
+
     // ---- leaving a specific room (e.g. dispatcher closes an activity) ----
     if (msg.type === "leave") {
       const roomId = msg.roomId;

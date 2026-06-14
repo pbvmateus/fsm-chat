@@ -268,36 +268,66 @@ sap.ui.define([
       });
     },
 
-    onApiTestPersons: function () {
+    // Send an FSM API request via the relay (avoids CORS — relay calls FSM
+    // server-side). The relay responds with a 'fsm-roster' WebSocket message.
+    _apiTestViaRelay: function (sResource, sSql) {
+      var that = this;
       var r = this._apiCtx();
-      // Person v25; technicians = EMPLOYEE type + plannableResource = true.
-      // 'regions' is the Set<Identifier> linking a person to Region(s).
-      var u = "https://" + r.host + "/api/data/v4/Person?dtos=Person.25" +
-        "&account=" + encodeURIComponent(r.account || "") +
-        "&company=" + encodeURIComponent(r.company || "") +
-        "&pageSize=20&fields=" +
-        encodeURIComponent("id,firstName,lastName,userName,type,plannableResource,regions") +
-        "&filter=" + encodeURIComponent("plannableResource==true;type==EMPLOYEE");
-      this._apiTestRun(u, "GET");
+      if (!r.host || !r.account || !r.company || !r.token) {
+        this._apiTestShow({
+          error: "Missing FSM context.",
+          have: { host: r.host, account: r.account, company: r.company,
+            token: r.token ? ("present(" + String(r.token).length + " chars)") : "MISSING" },
+          authRaw: this._ctxModel.getProperty("/fsmAuthRaw") || "(not received)",
+          note: "Token MISSING means REQUIRE_AUTHENTICATION hasn't fired yet. Wait a moment and retry."
+        });
+        return;
+      }
+      if (!this._transport || typeof this._transport._raw !== "function") {
+        this._apiTestShow({ error: "No relay connection. Connect to an activity first, or wait for the generic room to connect." });
+        return;
+      }
+      this._apiTestShow("Sending fsm-fetch (" + sResource + ") via relay…");
+      // One-shot listener: remove itself after the first matching response.
+      var that = this;
+      var origGenericMsg = this._transport._h && this._transport._h.onGenericMessage;
+      // Temporarily hook the raw ws message to catch fsm-roster.
+      var origOnMsg = this._transport._ws && this._transport._ws.onmessage;
+      if (this._transport._ws) {
+        var prevOnMsg = this._transport._ws.onmessage;
+        this._transport._ws.onmessage = function (evt) {
+          var data; try { data = JSON.parse(evt.data); } catch (e) {}
+          if (data && data.type === "fsm-roster" && data.resource === sResource) {
+            that._transport._ws.onmessage = prevOnMsg; // restore
+            that._apiTestShow(data);
+          } else if (prevOnMsg) {
+            prevOnMsg.call(this, evt);
+          }
+        };
+      }
+      this._transport._raw({
+        type: "fsm-fetch",
+        resource: sResource,
+        token: r.token,
+        account: r.account,
+        company: r.company,
+        clusterHost: r.host,
+        sql: sSql || undefined
+      });
+    },
+
+    onApiTestPersons: function () {
+      this._apiTestViaRelay("persons");
     },
 
     onApiTestRegions: function () {
-      var r = this._apiCtx();
-      var u = "https://" + r.host + "/api/data/v4/Region?dtos=Region.10" +
-        "&account=" + encodeURIComponent(r.account || "") +
-        "&company=" + encodeURIComponent(r.company || "") +
-        "&pageSize=50&fields=" + encodeURIComponent("id,code,name,parentId");
-      this._apiTestRun(u, "GET");
+      this._apiTestViaRelay("regions");
     },
 
     onApiTestQuery: function () {
-      var r = this._apiCtx();
-      var u = "https://" + r.host + "/api/query/v1?account=" +
-        encodeURIComponent(r.account || "") +
-        "&company=" + encodeURIComponent(r.company || "") + "&dtos=Person.25";
       var sql = "SELECT p.id, p.firstName, p.lastName, p.userName, p.regions " +
         "FROM Person p WHERE p.plannableResource = true AND p.type = 'EMPLOYEE'";
-      this._apiTestRun(u, "POST", { query: sql });
+      this._apiTestViaRelay("query", sql);
     },
 
     // ===== Away alerts (dispatcher messaged while technician not viewing) ====
