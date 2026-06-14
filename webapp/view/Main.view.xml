@@ -211,24 +211,26 @@
             </List>
 
             <!-- Individual picker (mode=individual) -->
+            <Input
+              visible="{= ${/broadcastMode} === 'individual' }"
+              value="{/broadcastSearch}"
+              placeholder="{i18n>broadcastSearchPlaceholder}"
+              liveChange=".onBroadcastSearch"
+              width="100%"
+              class="fsmChatBroadcastSearchInput" />
             <List
+              id="broadcastTargetList"
               visible="{= ${/broadcastMode} === 'individual' }"
               items="{ path: '/broadcastTargets', templateShareable: false }"
+              mode="MultiSelect"
+              selectionChange=".onBroadcastTargetToggle"
               showSeparators="Inner"
               class="fsmChatBroadcastList">
-              <CustomListItem press=".onBroadcastTargetToggle" class="fsmChatBroadcastItem">
-                <HBox justifyContent="SpaceBetween" alignItems="Center" width="100%"
-                  class="{= ${selected} ? 'fsmChatBroadcastItemRow fsmChatBroadcastItemSel' : 'fsmChatBroadcastItemRow' }">
-                  <VBox>
-                    <Text text="{= ${firstName} + ' ' + ${lastName} }" class="fsmChatInboxName" />
-                    <Text text="{userName}" class="fsmChatInboxActivity" />
-                  </VBox>
-                  <core:Icon
-                    src="{= ${selected} ? 'sap-icon://accept' : 'sap-icon://circle-task' }"
-                    class="{= ${selected} ? 'fsmChatBroadcastIconSel' : 'fsmChatBroadcastIconUnsel' }"
-                    size="1.4rem" />
-                </HBox>
-              </CustomListItem>
+              <StandardListItem
+                title="{= ${firstName} + ' ' + ${lastName} }"
+                description="{userName}"
+                selected="{selected}"
+                class="fsmChatBroadcastItem" />
             </List>
 
             <!-- Message input + send -->

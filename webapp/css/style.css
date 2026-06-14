@@ -388,3 +388,4 @@ html, body, #content, .sapMShell, .sapMApp {
 }
 .fsmChatBroadcastIconSel { color: var(--sapPositiveColor, #30914c); }
 .fsmChatBroadcastIconUnsel { color: #bbb; }
+.fsmChatBroadcastSearchInput { margin-bottom: 0.4rem; }

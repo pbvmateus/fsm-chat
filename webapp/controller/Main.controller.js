@@ -64,6 +64,7 @@ sap.ui.define([
         broadcastTargets: [], // [{id,firstName,lastName,userName,selected}]
         broadcastDraft: "",
         broadcastSent: false,
+        broadcastSearch: "",
         regionTechs: [],       // technicians in the selected region (pre-filtered)
         // Technician: received broadcast messages
         broadcasts: [],        // [{text, senderName, ts}]
@@ -440,6 +441,29 @@ sap.ui.define([
       this._model.setProperty("/broadcastTargets", aTargets);
     },
 
+    onBroadcastSearch: function (oEvent) {
+      var sQuery = (oEvent.getParameter("value") || "").toLowerCase().trim();
+      this._model.setProperty("/broadcastSearch", sQuery);
+      var oList = this.byId("broadcastTargetList");
+      if (!oList) { return; }
+      var oBinding = oList.getBinding("items");
+      if (!oBinding) { return; }
+      if (!sQuery) {
+        oBinding.filter([]);
+        return;
+      }
+      var Filter = sap.ui.model.Filter;
+      var FilterOperator = sap.ui.model.FilterOperator;
+      oBinding.filter([new Filter({
+        filters: [
+          new Filter("firstName", FilterOperator.Contains, sQuery),
+          new Filter("lastName", FilterOperator.Contains, sQuery),
+          new Filter("userName", FilterOperator.Contains, sQuery)
+        ],
+        and: false
+      })]);
+    },
+
     onBroadcastRegionChange: function (oEvent) {
       var sRegionId = oEvent.getParameter("selectedItem").getKey();
       this._model.setProperty("/broadcastRegion", sRegionId);
@@ -452,10 +476,12 @@ sap.ui.define([
     },
 
     onBroadcastTargetToggle: function (oEvent) {
-      var oCtx = oEvent.getSource().getBindingContext();
-      if (!oCtx) return;
-      var sPath = oCtx.getPath() + "/selected";
-      this._model.setProperty(sPath, !this._model.getProperty(sPath));
+      var oItem = oEvent.getParameter("listItem");
+      var bSelected = oEvent.getParameter("selected");
+      if (!oItem) { return; }
+      var oCtx = oItem.getBindingContext();
+      if (!oCtx) { return; }
+      this._model.setProperty(oCtx.getPath() + "/selected", bSelected);
     },
 
     onBroadcastSend: function () {
