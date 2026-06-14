@@ -64,6 +64,7 @@ sap.ui.define([
         broadcastTargets: [], // [{id,firstName,lastName,userName,selected}]
         broadcastDraft: "",
         broadcastSent: false,
+        regionTechs: [],       // technicians in the selected region (pre-filtered)
         // Technician: received broadcast messages
         broadcasts: [],        // [{text, senderName, ts}]
         broadcastCount: 0
@@ -431,6 +432,7 @@ sap.ui.define([
       var sKey = oEvent.getParameter("item").getKey();
       this._model.setProperty("/broadcastMode", sKey);
       this._model.setProperty("/broadcastRegion", "");
+      this._model.setProperty("/regionTechs", []);
       // Reset selection.
       var aTargets = this._model.getProperty("/broadcastTargets") || [];
       aTargets.forEach(function (t) { t.selected = false; });
@@ -440,6 +442,12 @@ sap.ui.define([
     onBroadcastRegionChange: function (oEvent) {
       var sRegionId = oEvent.getParameter("selectedItem").getKey();
       this._model.setProperty("/broadcastRegion", sRegionId);
+      // Pre-filter technicians for this region so the view binds to a simple list.
+      var aTechs = this._model.getProperty("/technicians") || [];
+      var aFiltered = sRegionId
+        ? aTechs.filter(function (t) { return t.regions.indexOf(sRegionId) >= 0; })
+        : [];
+      this._model.setProperty("/regionTechs", aFiltered);
     },
 
     onBroadcastTargetToggle: function (oEvent) {

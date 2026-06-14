@@ -196,31 +196,35 @@
                 <core:ListItem key="" text="{i18n>broadcastRegionPlaceholder}" />
               </items>
             </Select>
+            <!-- Region technician preview: pre-filtered by controller into /regionTechs -->
             <List
               visible="{= ${/broadcastMode} === 'region' &amp;&amp; !!${/broadcastRegion} }"
-              items="{ path: '/technicians', templateShareable: false }"
+              items="{ path: '/regionTechs', templateShareable: false }"
               showSeparators="None"
               class="fsmChatBroadcastPreview">
-              <CustomListItem
-                visible="{= ${regions}.indexOf(${/broadcastRegion}) >= 0 }"
-                class="fsmChatBroadcastPreviewItem">
+              <CustomListItem class="fsmChatBroadcastPreviewItem">
                 <Text text="{label}" class="fsmChatInboxName" />
               </CustomListItem>
             </List>
 
             <!-- Individual picker (mode=individual) -->
+            <!-- Note: CheckBox is not used here to avoid sap.m library issues.
+                 Selection is shown via ObjectStatus; tap the row to toggle. -->
             <List
               visible="{= ${/broadcastMode} === 'individual' }"
               items="{ path: '/broadcastTargets', templateShareable: false }"
               showSeparators="Inner"
               class="fsmChatBroadcastList">
               <CustomListItem press=".onBroadcastTargetToggle" class="fsmChatBroadcastItem">
-                <HBox alignItems="Center" width="100%" class="fsmChatBroadcastItemRow">
-                  <CheckBox selected="{selected}" editable="false" />
+                <HBox justifyContent="SpaceBetween" alignItems="Center" width="100%" class="fsmChatBroadcastItemRow">
                   <VBox>
                     <Text text="{= ${firstName} + ' ' + ${lastName} }" class="fsmChatInboxName" />
                     <Text text="{userName}" class="fsmChatInboxActivity" />
                   </VBox>
+                  <ObjectStatus
+                    text="{= ${selected} ? '✓' : '' }"
+                    state="{= ${selected} ? 'Success' : 'None' }"
+                    class="fsmChatBroadcastCheck" />
                 </HBox>
               </CustomListItem>
             </List>
