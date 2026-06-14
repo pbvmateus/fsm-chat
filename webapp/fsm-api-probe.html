@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FSM Data API probe</title>
+  <style>
+    body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; padding: 14px; background: #f5f6f7; color: #222; }
+    h1 { font-size: 18px; margin: 0 0 4px; }
+    .sub { color: #6a6d70; font-size: 13px; margin-bottom: 14px; }
+    .card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+    .k { font-weight: 700; font-size: 13px; }
+    .row { font-size: 13px; margin: 2px 0; word-break: break-all; }
+    .ok { color: #1b5e20; } .bad { color: #b71c1c; } .warn { color: #8a6d00; }
+    button { font-size: 14px; padding: 8px 14px; border-radius: 6px; border: 1px solid #0a6ed1; background: #0a6ed1; color: #fff; cursor: pointer; margin: 4px 6px 4px 0; }
+    button.sec { background: #fff; color: #0a6ed1; }
+    pre { white-space: pre-wrap; word-break: break-all; font-size: 11.5px; background: #1e1e1e; color: #d4d4d4; padding: 10px; border-radius: 6px; max-height: 320px; overflow: auto; }
+    label { font-size: 12px; display: block; margin: 6px 0 2px; }
+    input { width: 100%; box-sizing: border-box; padding: 6px; font-size: 13px; border: 1px solid #ccc; border-radius: 4px; }
+  </style>
+  <!-- FSM Shell SDK: same source the app uses to obtain context (incl. token). -->
+  <script src="https://unpkg.com/fsm-shell/release/fsm-shell-client.min.js"></script>
+</head>
+<body>
+  <h1>FSM Data API probe</h1>
+  <div class="sub">Validates that the FSM context token can call the Data API, and shows the shape of Person (technicians) and Region data. Open this inside the FSM shell as a web container, or fill the fields manually below.</div>
+
+  <div class="card">
+    <div class="k">1. Context (from FSM shell)</div>
+    <div id="ctxStatus" class="row warn">Waiting for FSM shell context…</div>
+    <div class="row" id="ctxAccount"></div>
+    <div class="row" id="ctxCompany"></div>
+    <div class="row" id="ctxHost"></div>
+    <div class="row" id="ctxToken"></div>
+    <details style="margin-top:8px;">
+      <summary style="font-size:12px;cursor:pointer;">Manual override (if not in shell / token missing)</summary>
+      <label>Tenant host (e.g. https://us.fsm.cloud.sap)</label>
+      <input id="mHost" placeholder="https://us.fsm.cloud.sap" />
+      <label>Account name</label>
+      <input id="mAccount" placeholder="technipfmc_T1" />
+      <label>Company name</label>
+      <input id="mCompany" placeholder="S4D300" />
+      <label>Auth token (bearer)</label>
+      <input id="mToken" placeholder="eyJ..." />
+    </details>
+  </div>
+
+  <div class="card">
+    <div class="k">2. Run probes</div>
+    <div class="sub">Each probe shows the raw HTTP status and response so we can see exactly what your tenant returns.</div>
+    <button onclick="probePersons()">Query Persons (technicians)</button>
+    <button onclick="probeRegions()" class="sec">Query Regions</button>
+    <button onclick="probePersonFields()" class="sec">Inspect Person fields</button>
+  </div>
+
+  <div class="card">
+    <div class="k">Result</div>
+    <pre id="out">(nothing yet)</pre>
+  </div>
+
+<script>
+  var CTX = { host: null, account: null, company: null, token: null };
+
+  function setOut(obj) {
+    var el = document.getElementById('out');
+    el.textContent = (typeof obj === 'string') ? obj : JSON.stringify(obj, null, 2);
+  }
+  function shorten(t) { return t ? (t.slice(0, 12) + '…(' + t.length + ' chars)') : '(none)'; }
+
+  // ---- Obtain context from the FSM Shell SDK -----------------------------
+  (function initContext() {
+    try {
+      if (typeof FSMShell === 'undefined') {
+        document.getElementById('ctxStatus').textContent =
+          'FSM Shell SDK not loaded (are you outside the shell? use manual override).';
+        document.getElementById('ctxStatus').className = 'row bad';
+        return;
+      }
+      var shell = FSMShell.ShellSdk.init(parent, '*');
+      var EV = FSMShell.SHELL_EVENTS;
+      shell.on(EV.Version1.REQUIRE_CONTEXT, function (payload) {
+        var ctx = (typeof payload === 'string') ? JSON.parse(payload) : payload;
+        // Token/account/company live at the top level of the context payload.
+        CTX.account = ctx.account || ctx.cloudAccount || ctx.accountName || null;
+        CTX.company = ctx.company || ctx.companyName || null;
+        CTX.token = ctx.authToken || ctx.auth || (ctx.data && ctx.data.authToken) || null;
+        // Tenant host: prefer the fully-qualified domain from the context.
+        CTX.host = ctx.cloudHost || ctx.dataCloudFullQualifiedDomainName ||
+                   ctx.cloudFullQualifiedDomainName ||
+                   (ctx.data && ctx.data.dataCloudFullQualifiedDomainName) || null;
+        if (CTX.host && CTX.host.indexOf('http') !== 0) CTX.host = 'https://' + CTX.host;
+
+        document.getElementById('ctxStatus').textContent = 'Context received from shell.';
+        document.getElementById('ctxStatus').className = 'row ok';
+        document.getElementById('ctxAccount').textContent = 'account: ' + (CTX.account || '(missing)');
+        document.getElementById('ctxCompany').textContent = 'company: ' + (CTX.company || '(missing)');
+        document.getElementById('ctxHost').textContent = 'host: ' + (CTX.host || '(missing)');
+        document.getElementById('ctxToken').textContent = 'token: ' + shorten(CTX.token);
+      });
+      shell.emit(EV.Version1.REQUIRE_CONTEXT, {
+        clientIdentifier: 'fsm-chat-extension', auth: { response_type: 'token' }
+      });
+    } catch (e) {
+      document.getElementById('ctxStatus').textContent = 'Context init error: ' + e.message;
+      document.getElementById('ctxStatus').className = 'row bad';
+    }
+  })();
+
+  function resolved() {
+    // Manual override wins if filled.
+    var host = document.getElementById('mHost').value.trim() || CTX.host;
+    var account = document.getElementById('mAccount').value.trim() || CTX.account;
+    var company = document.getElementById('mCompany').value.trim() || CTX.company;
+    var token = document.getElementById('mToken').value.trim() || CTX.token;
+    if (host && host.indexOf('http') !== 0) host = 'https://' + host;
+    return { host: host, account: account, company: company, token: token };
+  }
+
+  function buildUrl(r, dtoPath, dtoVersion, fields) {
+    var u = r.host + '/api/data/v4/' + dtoPath +
+      '?dtos=' + dtoVersion +
+      '&account=' + encodeURIComponent(r.account) +
+      '&company=' + encodeURIComponent(r.company) +
+      '&pageSize=20';
+    if (fields) u += '&fields=' + encodeURIComponent(fields);
+    return u;
+  }
+
+  async function doGet(url, r) {
+    setOut('GET ' + url + '\n\n(loading…)');
+    try {
+      var res = await fetch(url, {
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Client-ID': 'fsm-chat-probe',
+          'X-Client-Version': '1.0.0',
+          'Authorization': 'bearer ' + r.token
+        }
+      });
+      var text = await res.text();
+      var body;
+      try { body = JSON.parse(text); } catch (e) { body = text; }
+      setOut({ requestUrl: url, httpStatus: res.status, ok: res.ok, body: body });
+    } catch (e) {
+      setOut({ requestUrl: url, error: e.message,
+        hint: 'A network/CORS error here often means the browser blocked the cross-origin call, or the token is not valid for the Data API.' });
+    }
+  }
+
+  function guard(r) {
+    if (!r.host || !r.account || !r.company || !r.token) {
+      setOut('Missing one of host/account/company/token. Fill the manual override fields.\n\n' +
+        JSON.stringify({ host: r.host, account: r.account, company: r.company, token: shorten(r.token) }, null, 2));
+      return false;
+    }
+    return true;
+  }
+
+  // Person DTO holds technicians (and other people). We ask for a small page.
+  function probePersons() {
+    var r = resolved(); if (!guard(r)) return;
+    doGet(buildUrl(r, 'Person', 'Person.21', 'id,firstName,lastName,userName,email'), r);
+  }
+  // Inspect what fields Person actually exposes in this tenant (no field filter).
+  function probePersonFields() {
+    var r = resolved(); if (!guard(r)) return;
+    doGet(buildUrl(r, 'Person', 'Person.21', null), r);
+  }
+  // Region DTO — see if regions exist and what identifies them.
+  function probeRegions() {
+    var r = resolved(); if (!guard(r)) return;
+    // Region DTO version may vary by tenant; try a common one.
+    doGet(buildUrl(r, 'Region', 'Region.10', null), r);
+  }
+</script>
+</body>
+</html>
