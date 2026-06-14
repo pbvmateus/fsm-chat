@@ -170,6 +170,14 @@ sap.ui.define([], function () {
   // Report whether the chat view is currently visible/active to the user, so
   // the relay can base presence on "in chat" rather than "socket open".
   // Send a message in the technician's always-open direct channel.
+  // Tell the relay to clear this technician's stored broadcast history.
+  WebSocketTransport.prototype.clearBroadcasts = function () {
+    this._raw({
+      type: "clear-broadcasts",
+      userName: this._opts.userName
+    });
+  };
+
   WebSocketTransport.prototype.isConnected = function () {
     return this._ws && (this._ws.readyState === 0 || this._ws.readyState === 1);
   };

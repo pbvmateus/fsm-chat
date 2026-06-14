@@ -126,6 +126,11 @@ sap.ui.define([
       if (oComp._bgBroadcasts) { oComp._bgBroadcasts = []; }
       if (oComp._bgSeenKeys) { oComp._bgSeenKeys.clear(); }
       oComp._bgClearedAt = Date.now();
+      // Tell the relay to clear the server-side history for this technician so
+      // the messages don't come back after the webview is destroyed/reopened.
+      if (this._transport && typeof this._transport.clearBroadcasts === "function") {
+        this._transport.clearBroadcasts();
+      }
     },
 
     onTabSelect: function (oEvent) {

@@ -44,6 +44,7 @@ const GENERIC_TTL_MS = 24 * 60 * 60 * 1000; // drop entries older than 24h
 // Map of userName -> [{text, senderName, senderId, ts}]
 const BROADCAST_MAX_PER_USER = 100;
 const broadcastHistory = new Map(); // userName -> messages[]
+const broadcastClearedAt = new Map(); // userName -> epoch ms of last clear
 
 function storeBroadcast(targetUserName, msg) {
   if (!targetUserName) return;
@@ -223,13 +224,24 @@ wss.on("connection", (ws) => {
 
         // Replay any broadcasts sent while this technician was offline.
         // Merge their personal history with the "all" global history,
-        // deduplicate by ts, sort oldest-first, and send as a single replay.
+        // deduplicate by ts, filter out anything cleared, sort oldest-first.
         const personal = getBroadcastHistory(uKey);
         const global   = getBroadcastHistory("*");
+        const clearedAt = broadcastClearedAt.get(uKey) || 0;
         const seen = new Set();
         const merged = [...personal, ...global]
-          .filter(m => { const k = m.ts + "|" + m.text; if (seen.has(k)) return false; seen.add(k); return true; })
-          .sort((a, b) => (a.ts || 0) - (b.ts || 0));
+          .filter(m => {
+            // Skip messages sent before this user cleared their inbox.
+            var nTs = m.ts ? new Date(m.ts).getTime() : 0;
+            if (clearedAt && nTs < clearedAt) return false;
+            const k = m.ts + "|" + m.text;
+            if (seen.has(k)) return false;
+            seen.add(k);
+            return true;
+          })
+          .sort((a, b) => {
+            return (new Date(a.ts).getTime() || 0) - (new Date(b.ts).getTime() || 0);
+          });
         if (merged.length > 0) {
           try {
             ws.send(JSON.stringify({
@@ -475,6 +487,19 @@ wss.on("connection", (ws) => {
           try { ws.send(JSON.stringify({ type: "fsm-roster", resource, ok: false,
             error: err.message })); } catch(e){}
         });
+      return;
+    }
+
+    // ---- clear broadcast history (technician cleared their inbox) --------
+    if (msg.type === "clear-broadcasts") {
+      const uKey = (msg.userName || ws._userName || "").toLowerCase();
+      if (uKey) {
+        // Clear this technician's personal history.
+        broadcastHistory.set(uKey, []);
+        // Record a per-user cleared timestamp so future replays of "all"
+        // broadcasts skip anything sent before this point.
+        broadcastClearedAt.set(uKey, Date.now());
+      }
       return;
     }
 

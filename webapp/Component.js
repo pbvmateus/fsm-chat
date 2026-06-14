@@ -132,8 +132,9 @@ sap.ui.define([
             }));
             var toAdd = items
               .filter(function (m) {
-                // Skip messages the user already cleared.
-                if (that._bgClearedAt && (m.ts || 0) < that._bgClearedAt) { return false; }
+                // Normalize ts to epoch ms (it may be an ISO string or a number).
+                var nTs = m.ts ? new Date(m.ts).getTime() : 0;
+                if (that._bgClearedAt && nTs < that._bgClearedAt) { return false; }
                 return !existingKeys.has((m.ts || "") + "|" + m.text);
               })
               .map(function (m) {
@@ -153,7 +154,8 @@ sap.ui.define([
           onBroadcastReceived: function (m) {
             if (!m || !m.text) { return; }
             // Skip if user cleared broadcasts after this message was sent.
-            if (that._bgClearedAt && (m.ts || 0) < that._bgClearedAt) { return; }
+            var nMsgTs = m.ts ? new Date(m.ts).getTime() : 0;
+            if (that._bgClearedAt && nMsgTs < that._bgClearedAt) { return; }
             // Dedup at Component level — prevents double-delivery when both the
             // bg transport and an activity transport are connected simultaneously.
             var sKey = (m.ts || "") + "|" + m.text;
