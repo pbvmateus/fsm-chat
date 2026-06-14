@@ -552,24 +552,38 @@ sap.ui.define([
     // Technician receives a broadcast from a dispatcher (via activity transport).
     _onBroadcastReceived: function (oMsg) {
       if (!oMsg || !oMsg.text) return;
-      var oDate = oMsg.ts ? new Date(oMsg.ts) : new Date();
-      var sTime = oDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-      var oEntry = { text: oMsg.text, senderName: oMsg.senderName || "Dispatcher", ts: sTime };
-      var aList = this._model.getProperty("/broadcasts") || [];
-      aList = [oEntry].concat(aList);
-      this._model.setProperty("/broadcasts", aList);
-      this._model.setProperty("/broadcastCount", aList.length);
-      // Fire the component event so DirectChat screen also receives it.
+      // Guard against re-entrancy: the component event we fire below would
+      // trigger _onCompBroadcast → this function again → infinite loop.
+      if (this._broadcastProcessing) { return; }
+      this._broadcastProcessing = true;
       try {
-        this.getOwnerComponent().fireEvent("broadcastReceived", { message: oMsg });
-      } catch (e) { /* noop */ }
-      // Alert if not actively viewing.
-      if (this._selfActive === false || this._isHidden()) {
-        this._notifyAway(oMsg);
-      } else {
-        var oBundle = this.getOwnerComponent().getModel("i18n").getResourceBundle();
-        MessageToast.show(oBundle.getText("broadcastReceivedToast",
-          [oMsg.senderName || "Dispatcher"]), { duration: 5000 });
+        var oDate = oMsg.ts ? new Date(oMsg.ts) : new Date();
+        var sTime = oDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        var oEntry = { text: oMsg.text, senderName: oMsg.senderName || "Dispatcher", ts: sTime };
+        var aList = this._model.getProperty("/broadcasts") || [];
+        // Deduplicate: don't add if the same text+time is already the most recent.
+        var oLast = aList[0];
+        if (oLast && oLast.text === oEntry.text && oLast.senderName === oEntry.senderName
+            && oLast.ts === oEntry.ts) {
+          return;
+        }
+        aList = [oEntry].concat(aList);
+        this._model.setProperty("/broadcasts", aList);
+        this._model.setProperty("/broadcastCount", aList.length);
+        // Fire the component event so the DirectChat screen also receives it.
+        try {
+          this.getOwnerComponent().fireEvent("broadcastReceived", { message: oMsg });
+        } catch (e) { /* noop */ }
+        // Alert if not actively viewing.
+        if (this._selfActive === false || this._isHidden()) {
+          this._notifyAway(oMsg);
+        } else {
+          var oBundle = this.getOwnerComponent().getModel("i18n").getResourceBundle();
+          MessageToast.show(oBundle.getText("broadcastReceivedToast",
+            [oMsg.senderName || "Dispatcher"]), { duration: 5000 });
+        }
+      } finally {
+        this._broadcastProcessing = false;
       }
     },
 

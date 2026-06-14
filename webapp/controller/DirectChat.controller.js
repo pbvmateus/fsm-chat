@@ -71,9 +71,13 @@ sap.ui.define([
 
     _onBroadcastEvent: function (oEvent) {
       var oMsg = oEvent.getParameter("message");
-      if (!oMsg) { return; }
+      if (!oMsg || !oMsg.text) { return; }
       var aBC = this._model.getProperty("/broadcasts") || [];
-      aBC = [oMsg].concat(aBC);
+      // Deduplicate.
+      var oLast = aBC[0];
+      if (oLast && oLast.text === oMsg.text && oLast.senderName === (oMsg.senderName || "Dispatcher")) { return; }
+      aBC = [{ text: oMsg.text, senderName: oMsg.senderName || "Dispatcher",
+        ts: oMsg.ts || new Date().toISOString() }].concat(aBC);
       this._model.setProperty("/broadcasts", aBC);
       this._model.setProperty("/broadcastCount", aBC.length);
     },
