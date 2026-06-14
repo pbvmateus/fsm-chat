@@ -11,13 +11,10 @@
       <!-- Header -->
       <VBox class="fsmChatHeaderBlock" width="100%">
         <HBox class="fsmChatHeaderRow" justifyContent="SpaceBetween" alignItems="Center" width="100%">
-          <HBox class="fsmChatHeaderLeft" alignItems="Center">
-            <Button icon="sap-icon://nav-back" type="Transparent" press=".onNavBack" class="fsmChatVideoBtn" />
-            <VBox class="fsmChatHeaderTitleBox">
-              <Title text="{i18n>directChatTitle}" level="H2" class="fsmChatHeaderTitle" />
-              <Text text="{i18n>directChatSubtitle}" class="fsmChatHeaderSub" />
-            </VBox>
-          </HBox>
+          <VBox class="fsmChatHeaderTitleBox">
+            <Title text="{i18n>directChatTitle}" level="H2" class="fsmChatHeaderTitle" />
+            <Text text="{i18n>directChatSubtitle}" class="fsmChatHeaderSub" />
+          </VBox>
           <ObjectStatus
             text="{context>/_connText}"
             state="{context>/_connState}"

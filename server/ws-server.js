@@ -207,6 +207,27 @@ wss.on("connection", (ws) => {
       if (msg.userId) ws._userId = msg.userId;
       if (msg.userName) ws._userName = msg.userName;
       if (!ws._joinedAt) ws._joinedAt = Date.now();
+
+      // Evict stale duplicate sockets from the same user+role before joining.
+      // This prevents duplicate deliveries when a page reloads or reconnects
+      // without the relay knowing the old socket closed (e.g. Render sleep).
+      // Only evict from the primary room (not per-user personal rooms) to avoid
+      // closing the bg transport when the DirectChat transport connects.
+      if (msg.userName && msg.role) {
+        const uName = msg.userName.toLowerCase();
+        const existing = rooms.get(roomId);
+        if (existing) {
+          for (const peer of Array.from(existing)) {
+            if (peer !== ws &&
+                peer._userName && peer._userName.toLowerCase() === uName &&
+                peer._role === msg.role) {
+              // Same user, same role, same room — close the older socket.
+              try { peer.close(1000, "superseded"); } catch (e) {}
+            }
+          }
+        }
+      }
+
       addToRoom(roomId, ws);
 
       // Every technician also joins two personal rooms keyed by userName

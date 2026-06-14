@@ -143,6 +143,14 @@ sap.ui.define([
 
     onExit: function () {
       this._teardown();
+      // Detach the component broadcast listener so it doesn't run on a
+      // destroyed controller (which would leave _broadcastProcessing stuck).
+      if (this._onCompBroadcast) {
+        try {
+          this.getOwnerComponent().detachEvent("broadcastReceived", this._onCompBroadcast);
+        } catch (e) { /* noop */ }
+        this._onCompBroadcast = null;
+      }
     },
 
     _teardown: function () {
@@ -549,41 +557,28 @@ sap.ui.define([
         [aTargets[0] === "all" ? "all technicians" : aTargets.length + " technician(s)"]));
     },
 
-    // Technician receives a broadcast from a dispatcher (via activity transport).
+    // Technician receives a broadcast — called either from the activity
+    // transport's onBroadcastReceived or from the Component's broadcastReceived
+    // event (bg transport). Stores it and shows a toast/beep.
+    // Does NOT re-fire the component event — the Component already fired it.
     _onBroadcastReceived: function (oMsg) {
-      if (!oMsg || !oMsg.text) return;
-      // Guard against re-entrancy: the component event we fire below would
-      // trigger _onCompBroadcast → this function again → infinite loop.
-      if (this._broadcastProcessing) { return; }
-      this._broadcastProcessing = true;
-      try {
-        var oDate = oMsg.ts ? new Date(oMsg.ts) : new Date();
-        var sTime = oDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-        var oEntry = { text: oMsg.text, senderName: oMsg.senderName || "Dispatcher", ts: sTime };
-        var aList = this._model.getProperty("/broadcasts") || [];
-        // Deduplicate: don't add if the same text+time is already the most recent.
-        var oLast = aList[0];
-        if (oLast && oLast.text === oEntry.text && oLast.senderName === oEntry.senderName
-            && oLast.ts === oEntry.ts) {
-          return;
-        }
-        aList = [oEntry].concat(aList);
-        this._model.setProperty("/broadcasts", aList);
-        this._model.setProperty("/broadcastCount", aList.length);
-        // Fire the component event so the DirectChat screen also receives it.
-        try {
-          this.getOwnerComponent().fireEvent("broadcastReceived", { message: oMsg });
-        } catch (e) { /* noop */ }
-        // Alert if not actively viewing.
-        if (this._selfActive === false || this._isHidden()) {
-          this._notifyAway(oMsg);
-        } else {
-          var oBundle = this.getOwnerComponent().getModel("i18n").getResourceBundle();
-          MessageToast.show(oBundle.getText("broadcastReceivedToast",
-            [oMsg.senderName || "Dispatcher"]), { duration: 5000 });
-        }
-      } finally {
-        this._broadcastProcessing = false;
+      if (!oMsg || !oMsg.text) { return; }
+      var oDate = oMsg.ts ? new Date(oMsg.ts) : new Date();
+      var sTime = oDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      var oEntry = { text: oMsg.text, senderName: oMsg.senderName || "Dispatcher", ts: sTime };
+      var aList = this._model.getProperty("/broadcasts") || [];
+      // Deduplicate against local list.
+      var oLast = aList[0];
+      if (oLast && oLast.text === oEntry.text && oLast.senderName === oEntry.senderName) { return; }
+      aList = [oEntry].concat(aList);
+      this._model.setProperty("/broadcasts", aList);
+      this._model.setProperty("/broadcastCount", aList.length);
+      if (this._selfActive === false || this._isHidden()) {
+        this._notifyAway(oMsg);
+      } else {
+        var oBundle = this.getOwnerComponent().getModel("i18n").getResourceBundle();
+        MessageToast.show(oBundle.getText("broadcastReceivedToast",
+          [oMsg.senderName || "Dispatcher"]), { duration: 5000 });
       }
     },
 
@@ -749,7 +744,9 @@ sap.ui.define([
      * onOpen handler re-joins fsm-generic as a secondary room).
      */
     _connectGenericOnly: function () {
-      if (this._transport && this._currentRoom === "fsm-generic") { return; }
+      // Guard: already connected to generic room with a live transport.
+      if (this._transport && this._currentRoom === "fsm-generic" &&
+          this._transport.isConnected && this._transport.isConnected()) { return; }
       if (this._transport) { this._transport.disconnect(); this._transport = null; }
       this._currentRoom = "fsm-generic";
 

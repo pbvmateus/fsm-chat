@@ -119,31 +119,19 @@ sap.ui.define([
               }
             }, 5000);
           },
-          onBroadcastReceived: function (m) {
-            // Fire a component event so any open controller can react.
-            that.fireEvent("broadcastReceived", { message: m });
-            // Store in a persistent broadcasts list on the component.
-            that._bgBroadcasts = that._bgBroadcasts || [];
-            that._bgBroadcasts.unshift({
-              text: m.text,
-              senderName: m.senderName || "Dispatcher",
-              ts: m.ts || new Date().toISOString(),
-              read: false
-            });
-            // Play a beep — the user may be on any screen.
-            that._bgBeep();
-          },
-          onBroadcastHistory: function (data) {
+    onBroadcastHistory: function (data) {
             // Relay replayed broadcasts sent while this technician was offline.
             var items = (data && data.items) || [];
             if (!items.length) { return; }
             var existing = that._bgBroadcasts || [];
             // Build a dedup set from existing.
             var existingKeys = new Set(existing.map(function (m) {
-              return m.ts + "|" + m.text;
+              return (m.ts || "") + "|" + m.text;
             }));
             var toAdd = items
               .filter(function (m) {
+                // Skip messages the user already cleared.
+                if (that._bgClearedAt && (m.ts || 0) < that._bgClearedAt) { return false; }
                 return !existingKeys.has((m.ts || "") + "|" + m.text);
               })
               .map(function (m) {
@@ -151,16 +139,40 @@ sap.ui.define([
                   text: m.text,
                   senderName: m.senderName || "Dispatcher",
                   ts: m.ts || new Date().toISOString(),
-                  read: false  // arrived while offline — mark as unread
+                  read: false
                 };
               });
             if (!toAdd.length) { return; }
-            // Merge: history items are oldest-first from relay, prepend newer ones.
             that._bgBroadcasts = existing.concat(toAdd.reverse());
-            // Fire component event so any open controller refreshes its list.
             that.fireEvent("broadcastHistoryLoaded", {
               items: that._bgBroadcasts.slice()
             });
+          },
+          onBroadcastReceived: function (m) {
+            if (!m || !m.text) { return; }
+            // Skip if user cleared broadcasts after this message was sent.
+            if (that._bgClearedAt && (m.ts || 0) < that._bgClearedAt) { return; }
+            // Dedup at Component level — prevents double-delivery when both the
+            // bg transport and an activity transport are connected simultaneously.
+            var sKey = (m.ts || "") + "|" + m.text;
+            that._bgSeenKeys = that._bgSeenKeys || new Set();
+            if (that._bgSeenKeys.has(sKey)) { return; }
+            that._bgSeenKeys.add(sKey);
+            // Cap the seen-keys set to avoid unbounded growth.
+            if (that._bgSeenKeys.size > 500) { that._bgSeenKeys.clear(); }
+            // Store persistently.
+            that._bgBroadcasts = that._bgBroadcasts || [];
+            that._bgBroadcasts.unshift({
+              text: m.text,
+              senderName: m.senderName || "Dispatcher",
+              ts: m.ts || new Date().toISOString(),
+              read: false
+            });
+            // Fire component event — controllers subscribe to this.
+            // This is the ONLY place this event is fired for bg-transport
+            // broadcasts; controllers must NOT re-fire it to avoid loops.
+            that.fireEvent("broadcastReceived", { message: m });
+            that._bgBeep();
           },
           onDirectChat: function (m) {
             that.fireEvent("directChatReceived", { message: m });

@@ -170,6 +170,10 @@ sap.ui.define([], function () {
   // Report whether the chat view is currently visible/active to the user, so
   // the relay can base presence on "in chat" rather than "socket open".
   // Send a message in the technician's always-open direct channel.
+  WebSocketTransport.prototype.isConnected = function () {
+    return this._ws && (this._ws.readyState === 0 || this._ws.readyState === 1);
+  };
+
   WebSocketTransport.prototype.sendDirectChat = function (sText, sRoomId) {
     this._raw({
       type: "direct-chat",

@@ -130,9 +130,11 @@ sap.ui.define([
     onClearBroadcasts: function () {
       this._model.setProperty("/broadcasts", []);
       this._model.setProperty("/unreadCount", 0);
-      // Also clear the component's persistent list so they don't reappear.
       var oComp = this.getOwnerComponent();
       if (oComp._bgBroadcasts) { oComp._bgBroadcasts = []; }
+      if (oComp._bgSeenKeys) { oComp._bgSeenKeys.clear(); }
+      // Record when the user cleared so history replay skips older messages.
+      oComp._bgClearedAt = Date.now();
     },
 
     // ── Tab selection ──────────────────────────────────────────────────────
