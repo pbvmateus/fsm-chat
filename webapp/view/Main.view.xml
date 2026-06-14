@@ -246,8 +246,21 @@
                 title="{= ${firstName} + ' ' + ${lastName} }"
                 description="{userName}"
                 selected="{selected}"
-                class="fsmChatBroadcastItem" />
+                type="Active"
+                class="fsmChatBroadcastItem">
+                <customData>
+                  <core:CustomData key="userName" value="{userName}" />
+                  <core:CustomData key="displayName" value="{= ${firstName} + ' ' + ${lastName} }" />
+                </customData>
+              </StandardListItem>
             </List>
+            <Button
+              visible="{= ${/broadcastMode} === 'individual' }"
+              text="{i18n>directChatStartBtn}"
+              icon="sap-icon://discussion"
+              type="Ghost"
+              press=".onStartDirectChat"
+              class="fsmChatInboxPickBtn" />
 
             <!-- Message input + send -->
             <TextArea
@@ -423,7 +436,6 @@
                 <VBox class="fsmChatBubble {mine}">
                   <Text
                     text="{= ${senderRole} ? ${senderName} + ' \u00b7 ' + ${senderRole} : ${senderName} }"
-                    visible="{= ${mine} !== 'mine' }"
                     class="fsmChatSender" />
                   <Text text="{text}" class="fsmChatText" />
                   <Text text="{time}" class="fsmChatTime" textAlign="End" />

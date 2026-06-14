@@ -166,10 +166,12 @@ sap.ui.define([
       // Add message to local list immediately (optimistic).
       var oDate = new Date();
       var aMessages = this._model.getProperty("/directMessages") || [];
+      var sMyName = this._ctxModel.getProperty("/userName") || "Me";
+      var oBundle = this.getOwnerComponent().getModel("i18n").getResourceBundle();
       aMessages.push({
         text: sText,
-        senderName: this._ctxModel.getProperty("/userName") || "Me",
-        senderRole: "",
+        senderName: sMyName,
+        senderRole: oBundle.getText("roleTechnician"),
         mine: "mine",
         time: oDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
       });

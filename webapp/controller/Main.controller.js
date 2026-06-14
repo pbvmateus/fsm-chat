@@ -484,6 +484,19 @@ sap.ui.define([
       this._model.setProperty(oCtx.getPath() + "/selected", bSelected);
     },
 
+    onStartDirectChat: function () {
+      var aTargets = (this._model.getProperty("/broadcastTargets") || [])
+        .filter(function (t) { return t.selected; });
+      if (!aTargets.length) {
+        MessageToast.show("Select a technician first.");
+        return;
+      }
+      var oTech = aTargets[0];
+      var sUserKey = (oTech.userName || "").toLowerCase();
+      var sDisplayName = (oTech.firstName || "") + " " + (oTech.lastName || "");
+      this._openDirectRoom(sUserKey, sDisplayName.trim() || sUserKey);
+    },
+
     onBroadcastSend: function () {
       var sText = (this._model.getProperty("/broadcastDraft") || "").trim();
       if (!sText) return;
@@ -831,26 +844,37 @@ sap.ui.define([
       if (!oCtx) { return; }
       var sActivityId = oCtx.getProperty("activityId");
       if (!sActivityId) { return; }
-      // Remove from our own inbox immediately for snappy feedback.
+      // Remove from inbox immediately for snappy feedback.
       this._onGenericClaimed({ activityId: sActivityId });
-      // Clear the current-room marker so _connectRoom can't short-circuit.
       this._currentRoom = null;
-      // Direct chat pickup: activityId is "direct:<userName>" — join the
-      // fsm-direct-<userName> room directly instead of an activity room.
+      // Direct chat pickup: activityId = "direct:<userName>" → fsm-direct-<userName>
       if (sActivityId.indexOf("direct:") === 0) {
         var sUserKey = sActivityId.slice("direct:".length);
-        var sDirectRoom = "fsm-direct-" + sUserKey;
-        this._connectRoom(sDirectRoom);
-        // Also update the context model so the header shows something sensible.
-        var sDisplayName = oCtx.getProperty("lastName") || sUserKey;
-        this._ctxModel.setProperty("/_bound", true);
-        this._ctxModel.setProperty("/objectId", sActivityId);
-        this._model.setProperty("/peerName", sDisplayName);
-        this._model.setProperty("/activityCode", "Direct · " + sDisplayName);
+        this._openDirectRoom(sUserKey, oCtx.getProperty("lastName") || sUserKey);
         return;
       }
       // Normal activity pickup.
       this.getOwnerComponent().bindActivityManually(sActivityId);
+    },
+
+    // Initiate or join a direct chat room with a technician (by userName key).
+    // Called from Pick up on a direct: inbox entry, or from the dispatcher
+    // "Start direct chat" action in the broadcast panel.
+    _openDirectRoom: function (sUserKey, sDisplayName) {
+      var sDirectRoom = "fsm-direct-" + sUserKey.toLowerCase();
+      // Mirror what _bindToActivity does: clear the chat, mark as bound,
+      // set display fields, then connect the transport.
+      this._model.setProperty("/messages", []);
+      this._model.setProperty("/peerName", sDisplayName || sUserKey);
+      this._model.setProperty("/activityCode", "Direct · " + (sDisplayName || sUserKey));
+      this._model.setProperty("/dispatcherPresent", false);
+      this._model.setProperty("/technicianPresent", false);
+      this._model.setProperty("/peerTyping", false);
+      this._ctxModel.setProperty("/_bound", true);
+      this._ctxModel.setProperty("/objectId", "direct:" + sUserKey);
+      this._ctxModel.setProperty("/_contextSource", "direct");
+      this._currentRoom = null;
+      this._connectRoom(sDirectRoom);
     },
 
     /**
@@ -866,11 +890,10 @@ sap.ui.define([
 
     onLeaveActivity: function () {
       var sRoom = this._currentRoom;
-      if (this._transport && sRoom && sRoom.indexOf("fsm-room-") === 0 &&
+      var bIsTrackedRoom = sRoom &&
+        (sRoom.indexOf("fsm-room-") === 0 || sRoom.indexOf("fsm-direct-") === 0);
+      if (this._transport && bIsTrackedRoom &&
           typeof this._transport.leaveSecondaryRoom === "function") {
-        // Leave the activity room explicitly. (Even though it's the primary
-        // room here, the relay's leave handler removes us from it and
-        // recomputes dispatcher presence for any waiting technician.)
         this._transport.leaveSecondaryRoom(sRoom);
       }
       this.getOwnerComponent().unbindActivity();
