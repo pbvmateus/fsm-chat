@@ -2,8 +2,9 @@ sap.ui.define([
   "sap/ui/core/mvc/Controller",
   "sap/ui/model/json/JSONModel",
   "sap/m/MessageToast",
-  "com/test/fsmchat/model/ChatTransport"
-], function (Controller, JSONModel, MessageToast, ChatTransport) {
+  "com/test/fsmchat/model/ChatTransport",
+  "com/test/fsmchat/model/VideoCall"
+], function (Controller, JSONModel, MessageToast, ChatTransport, VideoCall) {
   "use strict";
 
   return Controller.extend("com.test.fsmchat.controller.DirectChat", {
@@ -13,21 +14,27 @@ sap.ui.define([
       var that = this;
       this._ctxModel = oComponent.getModel("context");
 
+      var bVideoSupported = false;
+      try { bVideoSupported = !!(VideoCall && VideoCall.isSupported && VideoCall.isSupported()); } catch(e){}
+
       this._model = new JSONModel({
         activeTab: "broadcasts",
-        broadcasts: [],        // [{text, senderName, ts, read}]
-        unreadCount: 0,        // unread broadcast count shown in the tab badge
+        broadcasts: [],
+        unreadCount: 0,
         directMessages: [],
-        directDraft: ""
+        directDraft: "",
+        videoSupported: bVideoSupported,
+        videoActive: false,
+        videoState: "",
+        videoStatusText: "",
+        incomingCall: false
       });
       this.getView().setModel(this._model);
       this.getView().setModel(this._ctxModel, "context");
       this.getView().setModel(oComponent.getModel("i18n"), "i18n");
 
-      // Load broadcasts accumulated by the bg transport before this screen opened.
       this._syncBroadcastsFromApp();
 
-      // Connect direct chat transport (with identity retry).
       var sUserId = this._ctxModel.getProperty("/userId");
       if (sUserId) {
         this._connectDirect();
@@ -43,7 +50,6 @@ sap.ui.define([
         }, 100);
       }
 
-      // Listen for events from the Component background transport.
       this._onBroadcastBound = this._onBroadcastEvent.bind(this);
       this._onDirectBound = function (oEvent) {
         var m = oEvent.getParameter("message");
@@ -57,13 +63,10 @@ sap.ui.define([
       oComponent.attachEvent("directChatReceived", this._onDirectBound);
       oComponent.attachEvent("broadcastHistoryLoaded", this._onHistoryBound);
 
-      // If the broadcasts tab is the first thing shown, mark as read immediately.
       if (this._model.getProperty("/activeTab") === "broadcasts") {
         setTimeout(this._markBroadcastsRead.bind(this), 300);
       }
     },
-
-    // ── Broadcast helpers ──────────────────────────────────────────────────
 
     _syncBroadcastsFromApp: function () {
       var oComponent = this.getOwnerComponent();
@@ -75,36 +78,25 @@ sap.ui.define([
       this._loadBroadcasts(aBC);
     },
 
-    // Central method to load/merge a broadcast list, preserving read state.
     _loadBroadcasts: function (aItems) {
       if (!aItems || !aItems.length) { return; }
       var aExisting = this._model.getProperty("/broadcasts") || [];
-      // Build a dedup set from existing items.
       var oKeys = {};
-      aExisting.forEach(function (m) { oKeys[m.ts + "|" + m.text] = true; });
-
-      var bBroadcastTabActive = this._model.getProperty("/activeTab") === "broadcasts";
-      var nNewUnread = 0;
+      aExisting.forEach(function (m) { oKeys[(m.ts || "") + "|" + m.text] = true; });
+      var bTabActive = this._model.getProperty("/activeTab") === "broadcasts";
       var aNew = [];
       aItems.forEach(function (m) {
         var sKey = (m.ts || "") + "|" + m.text;
-        if (oKeys[sKey]) { return; } // already present
+        if (oKeys[sKey]) { return; }
         oKeys[sKey] = true;
-        var bRead = bBroadcastTabActive ? true : !!m.read;
-        if (!bRead) { nNewUnread++; }
-        aNew.push({
-          text: m.text,
-          senderName: m.senderName || "Dispatcher",
-          ts: m.ts || new Date().toISOString(),
-          read: bRead
-        });
+        var bRead = bTabActive ? true : !!m.read;
+        aNew.push({ text: m.text, senderName: m.senderName || "Dispatcher",
+          ts: m.ts || new Date().toISOString(), read: bRead });
       });
       if (!aNew.length) { return; }
-
-      // Prepend new items, then sort newest-first so the order is always consistent.
       var aMerged = aNew.concat(aExisting);
       aMerged.sort(function (a, b) {
-        return (new Date(b.ts || 0).getTime()) - (new Date(a.ts || 0).getTime());
+        return new Date(b.ts || 0).getTime() - new Date(a.ts || 0).getTime();
       });
       this._model.setProperty("/broadcasts", aMerged);
       var nUnread = aMerged.filter(function (m) { return !m.read; }).length;
@@ -133,38 +125,25 @@ sap.ui.define([
       var oComp = this.getOwnerComponent();
       if (oComp._bgBroadcasts) { oComp._bgBroadcasts = []; }
       if (oComp._bgSeenKeys) { oComp._bgSeenKeys.clear(); }
-      // Record when the user cleared so history replay skips older messages.
       oComp._bgClearedAt = Date.now();
     },
-
-    // ── Tab selection ──────────────────────────────────────────────────────
 
     onTabSelect: function (oEvent) {
       var sKey = oEvent.getParameter("key");
       this._model.setProperty("/activeTab", sKey);
       if (sKey === "broadcasts") {
-        // Mark all as read when the user views the broadcasts tab.
         setTimeout(this._markBroadcastsRead.bind(this), 200);
       }
     },
 
-    // ── Direct chat ────────────────────────────────────────────────────────
-
     _connectDirect: function () {
       if (this._transport) { return; }
-      var sUserId = this._ctxModel.getProperty("/userId");
+      var sUserId   = this._ctxModel.getProperty("/userId");
       var sUserName = this._ctxModel.getProperty("/userName");
-      var sRole = this._ctxModel.getProperty("/role");
-      var sUserKey = (sUserName || sUserId || "unknown").toLowerCase();
-      var sDirectRoom = "fsm-direct-" + sUserKey;
-      this._directRoom = sDirectRoom;
-
-      var oOpts = {
-        roomId: sDirectRoom,
-        userId: sUserId,
-        userName: sUserName,
-        role: sRole
-      };
+      var sRole     = this._ctxModel.getProperty("/role");
+      var sUserKey  = (sUserName || sUserId || "unknown").toLowerCase();
+      this._directRoom = "fsm-direct-" + sUserKey;
+      var oOpts = { roomId: this._directRoom, userId: sUserId, userName: sUserName, role: sRole };
       var that = this;
       this._transport = ChatTransport.create(oOpts, {
         onOpen: function () {
@@ -176,13 +155,14 @@ sap.ui.define([
           that._ctxModel.setProperty("/_connState", "Error");
           that._ctxModel.setProperty("/_connText", "Offline");
           that._ctxModel.setProperty("/_connIcon", "sap-icon://disconnected");
+          if (that._video) { that._video.hangup(); that._video = null; }
+          that._model.setProperty("/videoActive", false);
         },
         onMessage: function (m) { that._onDirectIncoming(m); },
         onDirectChat: function (m) { that._onDirectIncoming(m); },
+        onSignal: function (sig) { that._onSignal(sig); },
         onBroadcastReceived: function (m) {
-          that._onBroadcastEvent({
-            getParameter: function (k) { return k === "message" ? m : null; }
-          });
+          that._onBroadcastEvent({ getParameter: function (k) { return k === "message" ? m : null; } });
         },
         onBroadcastHistory: function (data) {
           var items = (data && data.items) || [];
@@ -190,7 +170,6 @@ sap.ui.define([
         },
         onPresence: function () {},
         onTyping: function () {},
-        onSignal: function () {},
         onGenericMessage: function () {},
         onGenericBacklog: function () {},
         onGenericClaimed: function () {},
@@ -210,10 +189,8 @@ sap.ui.define([
         : (oMsg.role === "technician" ? oBundle.getText("roleTechnician") : "");
       var aMessages = this._model.getProperty("/directMessages") || [];
       aMessages.push({
-        text: oMsg.text,
-        senderName: oMsg.userName || oMsg.senderName || "?",
-        senderRole: sRoleLabel,
-        mine: bMine ? "mine" : "theirs",
+        text: oMsg.text, senderName: oMsg.userName || oMsg.senderName || "?",
+        senderRole: sRoleLabel, mine: bMine ? "mine" : "theirs",
         time: oDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
       });
       this._model.setProperty("/directMessages", aMessages);
@@ -260,27 +237,107 @@ sap.ui.define([
       setTimeout(this._scrollToBottom.bind(this), 80);
     },
 
-    onNavBack: function () {
-      // When opened via screen=direct (/mobile container), there is no
-      // meaningful "main" route to go back to — it would show the activity
-      // chat's unbound "Select a Service Call" screen. Instead, go back in
-      // browser history which lets FSM handle the navigation (closes the
-      // container and returns to the FSM screen the technician came from).
-      var sScreen = new URLSearchParams(window.location.search).get("screen");
-      if (sScreen === "direct") {
-        try { window.history.back(); } catch (e) { /* noop */ }
-        return;
-      }
-      var oHistory = sap.ui.core.routing.History.getInstance();
-      if (oHistory.getPreviousHash() !== undefined) {
-        window.history.go(-1);
-      } else {
-        // No history — stay on this screen rather than showing the wrong page.
-        // (Nothing to do.)
+    // ── Video ──────────────────────────────────────────────────────────────
+
+    _videoStatus: function (sState) {
+      this._model.setProperty("/videoState", sState);
+      var map = {
+        "requesting-camera": "Starting camera\u2026",
+        "calling": "Calling\u2026",
+        "connecting": "Connecting\u2026",
+        "connected": "Live",
+        "disconnected": "Reconnecting\u2026",
+        "ended": "Call ended",
+        "error": "Video error",
+        "failed": "Connection failed"
+      };
+      this._model.setProperty("/videoStatusText", map[sState] || sState);
+      if (sState === "ended" || sState === "error") {
+        this._model.setProperty("/videoActive", false);
+        this._model.setProperty("/incomingCall", false);
       }
     },
 
+    _makeVideo: function (sCallRole) {
+      var that = this;
+      return new VideoCall({
+        role: sCallRole,
+        transport: this._transport,
+        onState: function (s) { that._videoStatus(s); },
+        onLocalStream: function (stream) { that._attachStream("directLocalVideo", stream, true); },
+        onRemoteStream: function (stream) { that._attachStream("directRemoteVideo", stream, false); },
+        onError: function (err) {
+          that._videoStatus("error");
+          MessageToast.show("Video: " + (err && err.message ? err.message : "failed"));
+        }
+      });
+    },
+
+    onStartVideo: function () {
+      if (!this._transport) { return; }
+      if (this._video) { this._video.hangup(); }
+      this._model.setProperty("/videoActive", true);
+      this._video = this._makeVideo("caller");
+      this._video.startAsCaller();
+    },
+
+    onAcceptVideo: function () {
+      this._model.setProperty("/incomingCall", false);
+      this._model.setProperty("/videoActive", true);
+      if (this._video && this._pendingOffer) {
+        this._video.handleSignal(this._pendingOffer);
+        this._pendingOffer = null;
+      }
+    },
+
+    onDeclineVideo: function () {
+      this._model.setProperty("/incomingCall", false);
+      this._pendingOffer = null;
+      if (this._video) { this._video.hangup(); this._video = null; }
+    },
+
+    onEndVideo: function () {
+      if (this._video) { this._video.hangup(); this._video = null; }
+      this._model.setProperty("/videoActive", false);
+      this._model.setProperty("/incomingCall", false);
+    },
+
+    _onSignal: function (sig) {
+      if (sig.signalType === "offer") {
+        if (this._ctxModel.getProperty("/role") === "technician") { return; }
+        if (!this._video) { this._video = this._makeVideo("viewer"); }
+        this._pendingOffer = sig;
+        this._model.setProperty("/incomingCall", true);
+        // Auto-accept.
+        this._model.setProperty("/incomingCall", false);
+        this._model.setProperty("/videoActive", true);
+        this._video.handleSignal(sig);
+        this._pendingOffer = null;
+        return;
+      }
+      if (this._video) {
+        if (sig.signalType === "hangup") {
+          this._model.setProperty("/videoActive", false);
+          this._model.setProperty("/incomingCall", false);
+        }
+        this._video.handleSignal(sig);
+      }
+    },
+
+    _attachStream: function (sVideoId, stream, bMuted) {
+      setTimeout(function () {
+        var el = document.getElementById(sVideoId);
+        if (!el) { return; }
+        try {
+          el.srcObject = stream;
+          if (bMuted) { el.muted = true; }
+          el.play().catch(function () {});
+        } catch (e) {}
+      }, 100);
+    },
+
     onExit: function () {
+      if (this._video) { this._video.hangup(); this._video = null; }
       if (this._transport) { this._transport.disconnect(); this._transport = null; }
       var oComp = this.getOwnerComponent();
       if (this._onBroadcastBound) oComp.detachEvent("broadcastReceived", this._onBroadcastBound);

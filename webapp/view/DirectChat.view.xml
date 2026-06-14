@@ -15,11 +15,29 @@
             <Title text="{i18n>directChatTitle}" level="H2" class="fsmChatHeaderTitle" />
             <Text text="{i18n>directChatSubtitle}" class="fsmChatHeaderSub" />
           </VBox>
-          <ObjectStatus
-            text="{context>/_connText}"
-            state="{context>/_connState}"
-            icon="{context>/_connIcon}"
-            class="fsmChatConnStatus" />
+          <HBox alignItems="Center">
+            <Button
+              id="videoBtn"
+              icon="sap-icon://video"
+              type="Transparent"
+              tooltip="{i18n>shareVideo}"
+              visible="{= ${/videoSupported} &amp;&amp; ${/activeTab} === 'direct' &amp;&amp; !${/videoActive} }"
+              press=".onStartVideo"
+              class="fsmChatVideoBtn" />
+            <Button
+              id="videoEndBtn"
+              icon="sap-icon://decline"
+              type="Reject"
+              tooltip="{i18n>endVideo}"
+              visible="{= !!${/videoActive} }"
+              press=".onEndVideo"
+              class="fsmChatVideoBtn" />
+            <ObjectStatus
+              text="{context>/_connText}"
+              state="{context>/_connState}"
+              icon="{context>/_connIcon}"
+              class="fsmChatConnStatus" />
+          </HBox>
         </HBox>
       </VBox>
 
@@ -82,9 +100,27 @@
           </VBox>
 
           <!-- ── Direct chat tab ── -->
-          <VBox id="tabDirect"
-            visible="{= ${/activeTab} === 'direct' }"
-            class="fsmDirectTabContent">
+          <!-- Direct chat tab -->
+          <VBox id="tabDirect" visible="{= ${/activeTab} === 'direct' }" class="fsmDirectTabContent">
+
+            <!-- Video panel -->
+            <VBox visible="{= !!${/videoActive} }" class="fsmChatVideoPanel" width="100%">
+              <HBox class="fsmChatVideoStatusRow" alignItems="Center" justifyContent="SpaceBetween">
+                <Text text="{= 'Video · ' + ${/videoStatusText} }" class="fsmChatVideoStatus" />
+                <Button icon="sap-icon://decline" type="Reject" text="{i18n>endVideo}" press=".onEndVideo" class="fsmChatVideoEndInline" />
+              </HBox>
+              <core:HTML content="&lt;video id=&quot;directRemoteVideo&quot; autoplay playsinline class=&quot;fsmChatRemoteVideo&quot;&gt;&lt;/video&gt;" />
+              <core:HTML content="&lt;video id=&quot;directLocalVideo&quot; autoplay playsinline muted class=&quot;fsmChatLocalVideo&quot;&gt;&lt;/video&gt;" />
+            </VBox>
+
+            <!-- Incoming call -->
+            <HBox visible="{= !!${/incomingCall} }" class="fsmChatIncomingCall" alignItems="Center" justifyContent="SpaceBetween">
+              <Text text="{i18n>incomingVideo}" class="fsmChatIncomingText" />
+              <HBox>
+                <Button text="{i18n>acceptVideo}" type="Accept" icon="sap-icon://video" press=".onAcceptVideo" />
+                <Button text="{i18n>declineVideo}" type="Reject" icon="sap-icon://decline" press=".onDeclineVideo" />
+              </HBox>
+            </HBox>
 
             <VBox visible="{= ${/directMessages}.length === 0 }" alignItems="Center" class="fsmChatEmptyState">
               <core:Icon src="sap-icon://discussion" class="fsmChatEmptyIcon" />
@@ -93,13 +129,10 @@
 
             <VBox id="directMsgScroll" class="fsmChatScroll" width="100%">
               <VBox id="directMsgContainer" class="fsmChatMsgContainer" width="100%">
-                <List items="{ path: '/directMessages', templateShareable: false }"
-                  showSeparators="None" class="fsmChatList">
+                <List items="{ path: '/directMessages', templateShareable: false }" showSeparators="None" class="fsmChatList">
                   <CustomListItem class="fsmChatMsgItem">
                     <VBox class="{= ${mine} === 'mine' ? 'fsmChatBubbleWrap fsmChatBubbleWrapMine' : 'fsmChatBubbleWrap' }">
-                      <Text
-                        text="{= ${senderRole} ? ${senderName} + ' \u00b7 ' + ${senderRole} : ${senderName} }"
-                        class="fsmChatSender" />
+                      <Text text="{= ${senderRole} ? ${senderName} + ' · ' + ${senderRole} : ${senderName} }" class="fsmChatSender" />
                       <VBox class="{= ${mine} === 'mine' ? 'fsmChatBubble fsmChatBubbleMine' : 'fsmChatBubble fsmChatBubbleTheirs' }">
                         <Text text="{text}" class="fsmChatMsgText" />
                         <Text text="{time}" class="fsmChatMsgTime" />

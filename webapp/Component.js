@@ -109,19 +109,12 @@ sap.ui.define([
       sap.ui.require(["com/test/fsmchat/model/ChatTransport"], function (ChatTransport) {
         that._bgTransport = ChatTransport.create(oOpts, {
           onOpen: function () {
-            nReconnectDelay = 5000; // reset backoff on successful connect
+            // Connected — transport's own backoff resets automatically.
           },
-          onClose: function (nCode) {
-            // Don't reconnect if we closed it intentionally (superseded by a
-            // restart with a new userName) or if the Component is destroyed.
-            if (!that._bgReconnectEnabled) { return; }
-            var delay = nReconnectDelay;
-            nReconnectDelay = Math.min(nReconnectDelay * 2, 60000);
-            that._bgReconnectTimer = setTimeout(function () {
-              if (!that._bgReconnectEnabled) { return; }
-              that._bgTransport = null;
-              that._initBgTransport(sUserName);
-            }, delay);
+          onClose: function () {
+            // The WebSocketTransport already reconnects automatically with
+            // exponential backoff (1s → 2s → 4s → ... → 10s max).
+            // DO NOT start another reconnect here — that causes a socket storm.
           },
     onBroadcastHistory: function (data) {
             // Relay replayed broadcasts sent while this technician was offline.
@@ -190,7 +183,7 @@ sap.ui.define([
           onGenericClaimed: function () {},
           onFsmRoster: function () {}
         });
-        that._bgReconnectEnabled = true;
+        that._bgReconnectEnabled = true; // kept for restart-on-userName-change logic
         that._bgTransport.connect();
       });
     },
