@@ -10,30 +10,28 @@ sap.ui.define([
 
     onInit: function () {
       var oComponent = this.getOwnerComponent();
+      var that = this;
       this._ctxModel = oComponent.getModel("context");
 
       this._model = new JSONModel({
         activeTab: "broadcasts",
-        broadcasts: [],
-        broadcastCount: 0,
+        broadcasts: [],        // [{text, senderName, ts, read}]
+        unreadCount: 0,        // unread broadcast count shown in the tab badge
         directMessages: [],
         directDraft: ""
       });
       this.getView().setModel(this._model);
       this.getView().setModel(this._ctxModel, "context");
-      this.getView().setModel(
-        oComponent.getModel("i18n"), "i18n");
+      this.getView().setModel(oComponent.getModel("i18n"), "i18n");
 
-      // Share broadcasts from the main model (updated by Main controller).
+      // Load broadcasts accumulated by the bg transport before this screen opened.
       this._syncBroadcastsFromApp();
 
-      // Connect direct chat. If userId isn't available yet (shell context
-      // hasn't arrived), retry briefly — it arrives within ~500ms.
+      // Connect direct chat transport (with identity retry).
       var sUserId = this._ctxModel.getProperty("/userId");
       if (sUserId) {
         this._connectDirect();
       } else {
-        var that = this;
         var nAttempts = 0;
         var oRetry = setInterval(function () {
           nAttempts++;
@@ -45,7 +43,7 @@ sap.ui.define([
         }, 100);
       }
 
-      // Listen for new broadcasts and direct messages from the background transport.
+      // Listen for events from the Component background transport.
       this._onBroadcastBound = this._onBroadcastEvent.bind(this);
       this._onDirectBound = function (oEvent) {
         var m = oEvent.getParameter("message");
@@ -53,50 +51,97 @@ sap.ui.define([
       };
       this._onHistoryBound = function (oEvent) {
         var aItems = oEvent.getParameter("items") || [];
-        if (aItems.length) {
-          that._model.setProperty("/broadcasts", aItems.slice());
-          that._model.setProperty("/broadcastCount", aItems.length);
-        }
+        if (aItems.length) { that._loadBroadcasts(aItems); }
       };
-      this.getOwnerComponent().attachEvent("broadcastReceived", this._onBroadcastBound);
-      this.getOwnerComponent().attachEvent("directChatReceived", this._onDirectBound);
-      this.getOwnerComponent().attachEvent("broadcastHistoryLoaded", this._onHistoryBound);
+      oComponent.attachEvent("broadcastReceived", this._onBroadcastBound);
+      oComponent.attachEvent("directChatReceived", this._onDirectBound);
+      oComponent.attachEvent("broadcastHistoryLoaded", this._onHistoryBound);
+
+      // If the broadcasts tab is the first thing shown, mark as read immediately.
+      if (this._model.getProperty("/activeTab") === "broadcasts") {
+        setTimeout(this._markBroadcastsRead.bind(this), 300);
+      }
     },
 
-    // Pull existing broadcasts from the component's persistent background list.
+    // ── Broadcast helpers ──────────────────────────────────────────────────
+
     _syncBroadcastsFromApp: function () {
       var oComponent = this.getOwnerComponent();
-      // Try the bg transport's accumulated list first (most reliable).
       var aBC = oComponent.getBgBroadcasts ? oComponent.getBgBroadcasts() : [];
-      // Fall back to the app model if available.
       if (!aBC.length) {
         var oAppModel = oComponent.getModel("app");
         if (oAppModel) { aBC = oAppModel.getProperty("/broadcasts") || []; }
       }
-      this._model.setProperty("/broadcasts", aBC.slice());
-      this._model.setProperty("/broadcastCount", aBC.length);
+      this._loadBroadcasts(aBC);
+    },
+
+    // Central method to load/merge a broadcast list, preserving read state.
+    _loadBroadcasts: function (aItems) {
+      if (!aItems || !aItems.length) { return; }
+      var aExisting = this._model.getProperty("/broadcasts") || [];
+      // Build a dedup set from existing items.
+      var oKeys = {};
+      aExisting.forEach(function (m) { oKeys[m.ts + "|" + m.text] = true; });
+
+      var bBroadcastTabActive = this._model.getProperty("/activeTab") === "broadcasts";
+      var nNewUnread = 0;
+      var aNew = [];
+      aItems.forEach(function (m) {
+        var sKey = (m.ts || "") + "|" + m.text;
+        if (oKeys[sKey]) { return; } // already present
+        oKeys[sKey] = true;
+        var bRead = bBroadcastTabActive ? true : !!m.read;
+        if (!bRead) { nNewUnread++; }
+        aNew.push({
+          text: m.text,
+          senderName: m.senderName || "Dispatcher",
+          ts: m.ts || new Date().toISOString(),
+          read: bRead
+        });
+      });
+      if (!aNew.length) { return; }
+
+      // Prepend new items (newest first).
+      var aMerged = aNew.concat(aExisting);
+      this._model.setProperty("/broadcasts", aMerged);
+      var nUnread = aMerged.filter(function (m) { return !m.read; }).length;
+      this._model.setProperty("/unreadCount", nUnread);
     },
 
     _onBroadcastEvent: function (oEvent) {
       var oMsg = oEvent.getParameter("message");
       if (!oMsg || !oMsg.text) { return; }
-      var aBC = this._model.getProperty("/broadcasts") || [];
-      // Deduplicate.
-      var oLast = aBC[0];
-      if (oLast && oLast.text === oMsg.text && oLast.senderName === (oMsg.senderName || "Dispatcher")) { return; }
-      aBC = [{ text: oMsg.text, senderName: oMsg.senderName || "Dispatcher",
-        ts: oMsg.ts || new Date().toISOString() }].concat(aBC);
-      this._model.setProperty("/broadcasts", aBC);
-      this._model.setProperty("/broadcastCount", aBC.length);
+      this._loadBroadcasts([oMsg]);
     },
+
+    _markBroadcastsRead: function () {
+      var aBC = this._model.getProperty("/broadcasts") || [];
+      var bChanged = false;
+      aBC.forEach(function (m) { if (!m.read) { m.read = true; bChanged = true; } });
+      if (bChanged) {
+        this._model.setProperty("/broadcasts", aBC.slice());
+        this._model.setProperty("/unreadCount", 0);
+      }
+    },
+
+    // ── Tab selection ──────────────────────────────────────────────────────
+
+    onTabSelect: function (oEvent) {
+      var sKey = oEvent.getParameter("key");
+      this._model.setProperty("/activeTab", sKey);
+      if (sKey === "broadcasts") {
+        // Mark all as read when the user views the broadcasts tab.
+        setTimeout(this._markBroadcastsRead.bind(this), 200);
+      }
+    },
+
+    // ── Direct chat ────────────────────────────────────────────────────────
 
     _connectDirect: function () {
       if (this._transport) { return; }
       var sUserId = this._ctxModel.getProperty("/userId");
       var sUserName = this._ctxModel.getProperty("/userName");
       var sRole = this._ctxModel.getProperty("/role");
-      // Room key uses userName (lowercased) — consistent with the relay and
-      // the dispatcher's broadcast targeting which also uses userName.
       var sUserKey = (sUserName || sUserId || "unknown").toLowerCase();
       var sDirectRoom = "fsm-direct-" + sUserKey;
       this._directRoom = sDirectRoom;
@@ -121,14 +166,21 @@ sap.ui.define([
         },
         onMessage: function (m) { that._onDirectIncoming(m); },
         onDirectChat: function (m) { that._onDirectIncoming(m); },
+        onBroadcastReceived: function (m) {
+          that._onBroadcastEvent({
+            getParameter: function (k) { return k === "message" ? m : null; }
+          });
+        },
+        onBroadcastHistory: function (data) {
+          var items = (data && data.items) || [];
+          if (items.length) { that._loadBroadcasts(items); }
+        },
         onPresence: function () {},
         onTyping: function () {},
         onSignal: function () {},
         onGenericMessage: function () {},
         onGenericBacklog: function () {},
         onGenericClaimed: function () {},
-        onBroadcastReceived: function (m) { that._onBroadcastEvent(
-          { getParameter: function (k) { return k === "message" ? m : null; } }); },
         onFsmRoster: function () {}
       });
       this._transport.connect();
@@ -173,25 +225,16 @@ sap.ui.define([
       if (last && last.scrollIntoView) { last.scrollIntoView({ block: "end" }); }
     },
 
-    onTabSelect: function (oEvent) {
-      var sKey = oEvent.getParameter("key");
-      this._model.setProperty("/activeTab", sKey);
-    },
-
     onDirectSend: function () {
       var sText = (this._model.getProperty("/directDraft") || "").trim();
       if (!sText) { return; }
       if (!this._transport) { MessageToast.show("Not connected."); return; }
-      var sRoom = this._directRoom || ("fsm-direct-" +
-        (this._ctxModel.getProperty("/userName") || "unknown").toLowerCase());
-      // Add message to local list immediately (optimistic).
       var oDate = new Date();
-      var aMessages = this._model.getProperty("/directMessages") || [];
-      var sMyName = this._ctxModel.getProperty("/userName") || "Me";
       var oBundle = this.getOwnerComponent().getModel("i18n").getResourceBundle();
+      var aMessages = this._model.getProperty("/directMessages") || [];
       aMessages.push({
         text: sText,
-        senderName: sMyName,
+        senderName: this._ctxModel.getProperty("/userName") || "Me",
         senderRole: oBundle.getText("roleTechnician"),
         mine: "mine",
         time: oDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
@@ -199,20 +242,14 @@ sap.ui.define([
       this._model.setProperty("/directMessages", aMessages);
       this._model.setProperty("/directDraft", "");
       if (typeof this._transport.sendDirectChat === "function") {
-        this._transport.sendDirectChat(sText, sRoom);
-      } else {
-        // Fallback: send as a regular chat message.
-        this._transport.send({ type: "direct-chat", text: sText,
-          roomId: sRoom, userName: this._ctxModel.getProperty("/userName"),
-          userId: this._ctxModel.getProperty("/userId"), role: "technician" });
+        this._transport.sendDirectChat(sText, this._directRoom);
       }
       setTimeout(this._scrollToBottom.bind(this), 80);
     },
 
     onNavBack: function () {
       var oHistory = sap.ui.core.routing.History.getInstance();
-      var sPreviousHash = oHistory.getPreviousHash();
-      if (sPreviousHash !== undefined) {
+      if (oHistory.getPreviousHash() !== undefined) {
         window.history.go(-1);
       } else {
         this.getOwnerComponent().getRouter().navTo("main");
@@ -220,14 +257,11 @@ sap.ui.define([
     },
 
     onExit: function () {
-      if (this._transport) {
-        this._transport.disconnect();
-        this._transport = null;
-      }
+      if (this._transport) { this._transport.disconnect(); this._transport = null; }
       var oComp = this.getOwnerComponent();
       if (this._onBroadcastBound) oComp.detachEvent("broadcastReceived", this._onBroadcastBound);
-      if (this._onDirectBound) oComp.detachEvent("directChatReceived", this._onDirectBound);
-      if (this._onHistoryBound) oComp.detachEvent("broadcastHistoryLoaded", this._onHistoryBound);
+      if (this._onDirectBound)    oComp.detachEvent("directChatReceived", this._onDirectBound);
+      if (this._onHistoryBound)   oComp.detachEvent("broadcastHistoryLoaded", this._onHistoryBound);
     }
   });
 });

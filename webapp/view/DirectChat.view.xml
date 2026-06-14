@@ -5,22 +5,14 @@
   xmlns:core="sap.ui.core"
   displayBlock="true">
 
-  <Page
-    id="directChatPage"
-    showHeader="false"
-    class="fsmChatPage">
-
+  <Page id="directChatPage" showHeader="false" class="fsmChatPage">
     <content>
 
       <!-- Header -->
       <VBox class="fsmChatHeaderBlock" width="100%">
         <HBox class="fsmChatHeaderRow" justifyContent="SpaceBetween" alignItems="Center" width="100%">
           <HBox class="fsmChatHeaderLeft" alignItems="Center">
-            <Button
-              icon="sap-icon://nav-back"
-              type="Transparent"
-              press=".onNavBack"
-              class="fsmChatVideoBtn" />
+            <Button icon="sap-icon://nav-back" type="Transparent" press=".onNavBack" class="fsmChatVideoBtn" />
             <VBox class="fsmChatHeaderTitleBox">
               <Title text="{i18n>directChatTitle}" level="H2" class="fsmChatHeaderTitle" />
               <Text text="{i18n>directChatSubtitle}" class="fsmChatHeaderSub" />
@@ -34,77 +26,70 @@
         </HBox>
       </VBox>
 
-      <!-- Tab bar: Broadcasts | Direct chat -->
-      <IconTabBar
-        id="directTabBar"
-        select=".onTabSelect"
-        class="fsmDirectTabBar"
-        expanded="true">
+      <!-- Tabs -->
+      <IconTabBar id="directTabBar" select=".onTabSelect" class="fsmDirectTabBar" expanded="true">
         <items>
-          <IconTabFilter
-            key="broadcasts"
-            text="{i18n>directTabBroadcasts}"
+          <!-- Unread count shown as badge; clears when tab is opened -->
+          <IconTabFilter key="broadcasts" text="{i18n>directTabBroadcasts}"
             icon="sap-icon://megaphone"
-            count="{/broadcastCount}" />
-          <IconTabFilter
-            key="direct"
-            text="{i18n>directTabDirect}"
-            icon="sap-icon://discussion" />
+            count="{= ${/unreadCount} > 0 ? ${/unreadCount} + '' : '' }" />
+          <IconTabFilter key="direct" text="{i18n>directTabDirect}" icon="sap-icon://discussion" />
         </items>
         <content>
 
-          <!-- Broadcasts panel -->
-          <VBox
-            id="tabBroadcasts"
+          <!-- ── Broadcasts tab ── -->
+          <VBox id="tabBroadcasts"
             visible="{= ${/activeTab} === 'broadcasts' }"
             class="fsmDirectTabContent">
-            <VBox
-              visible="{= ${/broadcasts}.length === 0 }"
-              alignItems="Center"
-              class="fsmChatEmptyState">
+
+            <VBox visible="{= ${/broadcasts}.length === 0 }" alignItems="Center" class="fsmChatEmptyState">
               <core:Icon src="sap-icon://megaphone" class="fsmChatEmptyIcon" />
               <Text text="{i18n>directNoBroadcasts}" class="fsmChatEmptyText" />
             </VBox>
+
             <List
               visible="{= ${/broadcasts}.length > 0 }"
               items="{ path: '/broadcasts', templateShareable: false }"
               showSeparators="Inner"
               class="fsmDirectBroadcastList">
-              <CustomListItem class="fsmChatInboxItem">
-                <VBox class="fsmDirectBroadcastMsg">
-                  <HBox alignItems="Center" class="fsmDirectBroadcastHead">
-                    <core:Icon src="sap-icon://employee" class="fsmDirectBroadcastIcon" />
-                    <Text text="{senderName}" class="fsmChatInboxName" />
-                  </HBox>
-                  <Text text="{text}" class="fsmDirectBroadcastText" />
-                  <Text text="{ts}" class="fsmChatInboxActivity" />
-                </VBox>
+              <CustomListItem class="{= ${read} ? 'fsmDirectBroadcastItemRead' : 'fsmDirectBroadcastItemUnread' }">
+                <HBox alignItems="Start" width="100%" class="fsmDirectBroadcastMsg">
+                  <!-- Unread dot -->
+                  <core:Icon
+                    src="sap-icon://circle-task-2"
+                    visible="{= !${read} }"
+                    class="fsmDirectUnreadDot" />
+                  <VBox class="fsmDirectBroadcastBody">
+                    <HBox alignItems="Center" class="fsmDirectBroadcastHead">
+                      <core:Icon src="sap-icon://megaphone" class="fsmDirectBroadcastIcon" />
+                      <Text text="{senderName}" class="fsmChatInboxName" />
+                      <Text text="{ts}" class="fsmDirectBroadcastTime" />
+                    </HBox>
+                    <Text text="{text}" class="fsmDirectBroadcastText" />
+                  </VBox>
+                </HBox>
               </CustomListItem>
             </List>
           </VBox>
 
-          <!-- Direct chat panel -->
-          <VBox
-            id="tabDirect"
+          <!-- ── Direct chat tab ── -->
+          <VBox id="tabDirect"
             visible="{= ${/activeTab} === 'direct' }"
             class="fsmDirectTabContent">
-            <VBox
-              visible="{= ${/directMessages}.length === 0 }"
-              alignItems="Center"
-              class="fsmChatEmptyState">
+
+            <VBox visible="{= ${/directMessages}.length === 0 }" alignItems="Center" class="fsmChatEmptyState">
               <core:Icon src="sap-icon://discussion" class="fsmChatEmptyIcon" />
               <Text text="{i18n>directNoMessages}" class="fsmChatEmptyText" />
             </VBox>
+
             <VBox id="directMsgScroll" class="fsmChatScroll" width="100%">
               <VBox id="directMsgContainer" class="fsmChatMsgContainer" width="100%">
-                <List
-                  items="{ path: '/directMessages', templateShareable: false }"
-                  showSeparators="None"
-                  class="fsmChatList">
+                <List items="{ path: '/directMessages', templateShareable: false }"
+                  showSeparators="None" class="fsmChatList">
                   <CustomListItem class="fsmChatMsgItem">
                     <VBox class="{= ${mine} === 'mine' ? 'fsmChatBubbleWrap fsmChatBubbleWrapMine' : 'fsmChatBubbleWrap' }">
                       <Text
-                        text="{= ${senderRole} ? ${senderName} + ' · ' + ${senderRole} : ${senderName} }"
+                        text="{= ${senderRole} ? ${senderName} + ' \u00b7 ' + ${senderRole} : ${senderName} }"
                         class="fsmChatSender" />
                       <VBox class="{= ${mine} === 'mine' ? 'fsmChatBubble fsmChatBubbleMine' : 'fsmChatBubble fsmChatBubbleTheirs' }">
                         <Text text="{text}" class="fsmChatMsgText" />
@@ -123,28 +108,17 @@
     </content>
 
     <footer>
-      <Bar
-        visible="{= ${/activeTab} === 'direct' }"
-        class="fsmChatInputBar">
+      <Bar visible="{= ${/activeTab} === 'direct' }" class="fsmChatInputBar">
         <contentMiddle>
-          <Input
-            id="directInput"
-            width="100%"
-            placeholder="{i18n>inputPlaceholder}"
-            value="{/directDraft}"
-            submit=".onDirectSend"
-            class="fsmChatInput" />
+          <Input id="directInput" width="100%" placeholder="{i18n>inputPlaceholder}"
+            value="{/directDraft}" submit=".onDirectSend" class="fsmChatInput" />
         </contentMiddle>
         <contentRight>
-          <Button
-            icon="sap-icon://paper-plane"
-            type="Emphasized"
+          <Button icon="sap-icon://paper-plane" type="Emphasized"
             enabled="{= !!${/directDraft} &amp;&amp; ${/directDraft}.trim().length > 0 }"
-            press=".onDirectSend"
-            class="fsmChatSendBtn" />
+            press=".onDirectSend" class="fsmChatSendBtn" />
         </contentRight>
       </Bar>
     </footer>
-
   </Page>
 </mvc:View>

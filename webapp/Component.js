@@ -127,7 +127,8 @@ sap.ui.define([
             that._bgBroadcasts.unshift({
               text: m.text,
               senderName: m.senderName || "Dispatcher",
-              ts: m.ts || new Date().toISOString()
+              ts: m.ts || new Date().toISOString(),
+              read: false
             });
             // Play a beep — the user may be on any screen.
             that._bgBeep();
@@ -149,7 +150,8 @@ sap.ui.define([
                 return {
                   text: m.text,
                   senderName: m.senderName || "Dispatcher",
-                  ts: m.ts || new Date().toISOString()
+                  ts: m.ts || new Date().toISOString(),
+                  read: false  // arrived while offline — mark as unread
                 };
               });
             if (!toAdd.length) { return; }

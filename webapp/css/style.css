@@ -399,3 +399,25 @@ html, body, #content, .sapMShell, .sapMApp {
 .fsmDirectBroadcastHead { gap: 0.4rem; margin-bottom: 0.15rem; }
 .fsmDirectBroadcastIcon { color: var(--sapHighlightColor, #0a6ed1); font-size: 0.9rem; }
 .fsmDirectBroadcastText { font-size: 0.9rem; color: var(--sapTextColor, #32363a); }
+
+/* ===== DirectChat broadcast read/unread ===== */
+.fsmDirectBroadcastItemUnread {
+  background: var(--sapHighlightColor, #e8f4fc);
+  border-left: 3px solid var(--sapHighlightColor, #0a6ed1);
+}
+.fsmDirectBroadcastItemRead {
+  background: transparent;
+  border-left: 3px solid transparent;
+}
+.fsmDirectUnreadDot {
+  color: var(--sapHighlightColor, #0a6ed1);
+  font-size: 0.55rem;
+  margin: 0.3rem 0.4rem 0 0;
+  flex: 0 0 auto;
+}
+.fsmDirectBroadcastBody { flex: 1; min-width: 0; }
+.fsmDirectBroadcastTime {
+  color: var(--sapContent_LabelColor, #6a6d70);
+  font-size: 0.75rem;
+  margin-left: 0.5rem;
+}
