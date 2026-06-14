@@ -45,19 +45,28 @@ sap.ui.define([
         }, 100);
       }
 
-      // Listen for new broadcasts pushed by the app.
-      this.getOwnerComponent().attachEvent(
-        "broadcastReceived", this._onBroadcastEvent.bind(this));
+      // Listen for new broadcasts and direct messages from the background transport.
+      this._onBroadcastBound = this._onBroadcastEvent.bind(this);
+      this._onDirectBound = function (oEvent) {
+        var m = oEvent.getParameter("message");
+        if (m) { that._onDirectIncoming(m); }
+      };
+      this.getOwnerComponent().attachEvent("broadcastReceived", this._onBroadcastBound);
+      this.getOwnerComponent().attachEvent("directChatReceived", this._onDirectBound);
     },
 
-    // Pull existing broadcasts from the shared app model.
+    // Pull existing broadcasts from the component's persistent background list.
     _syncBroadcastsFromApp: function () {
-      var oAppModel = this.getOwnerComponent().getModel("app");
-      if (oAppModel) {
-        var aBC = oAppModel.getProperty("/broadcasts") || [];
-        this._model.setProperty("/broadcasts", aBC.slice());
-        this._model.setProperty("/broadcastCount", aBC.length);
+      var oComponent = this.getOwnerComponent();
+      // Try the bg transport's accumulated list first (most reliable).
+      var aBC = oComponent.getBgBroadcasts ? oComponent.getBgBroadcasts() : [];
+      // Fall back to the app model if available.
+      if (!aBC.length) {
+        var oAppModel = oComponent.getModel("app");
+        if (oAppModel) { aBC = oAppModel.getProperty("/broadcasts") || []; }
       }
+      this._model.setProperty("/broadcasts", aBC.slice());
+      this._model.setProperty("/broadcastCount", aBC.length);
     },
 
     _onBroadcastEvent: function (oEvent) {
@@ -203,8 +212,9 @@ sap.ui.define([
         this._transport.disconnect();
         this._transport = null;
       }
-      this.getOwnerComponent().detachEvent(
-        "broadcastReceived", this._onBroadcastEvent.bind(this));
+      var oComp = this.getOwnerComponent();
+      if (this._onBroadcastBound) oComp.detachEvent("broadcastReceived", this._onBroadcastBound);
+      if (this._onDirectBound) oComp.detachEvent("directChatReceived", this._onDirectBound);
     }
   });
 });

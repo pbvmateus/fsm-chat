@@ -126,9 +126,16 @@ sap.ui.define([
       // Track whether the chat view is actually visible, so presence reflects
       // "in chat" rather than "socket open in the background".
       this._setupActivityTracking();
-      // Ask for notification permission (best-effort; may be unavailable in the
-      // FSM webview — we fall back to in-app sound + banner).
+      // Ask for notification permission (best-effort).
       this._initNotifications();
+      // Listen for broadcasts delivered by the Component's background transport
+      // (arrives even when activity transport isn't connected or when navigating).
+      var that = this;
+      this._onCompBroadcast = function (oEvent) {
+        var m = oEvent.getParameter("message");
+        if (m) { that._onBroadcastReceived(m); }
+      };
+      this.getOwnerComponent().attachEvent("broadcastReceived", this._onCompBroadcast);
 
       // Clean up on exit.
       this.getView().addEventDelegate({ onExit: this._teardown.bind(this) });
@@ -542,7 +549,7 @@ sap.ui.define([
         [aTargets[0] === "all" ? "all technicians" : aTargets.length + " technician(s)"]));
     },
 
-    // Technician receives a broadcast from a dispatcher.
+    // Technician receives a broadcast from a dispatcher (via activity transport).
     _onBroadcastReceived: function (oMsg) {
       if (!oMsg || !oMsg.text) return;
       var oDate = oMsg.ts ? new Date(oMsg.ts) : new Date();
@@ -552,15 +559,15 @@ sap.ui.define([
       aList = [oEntry].concat(aList);
       this._model.setProperty("/broadcasts", aList);
       this._model.setProperty("/broadcastCount", aList.length);
-      // Share with DirectChat controller via Component store.
-      var oComponent = this.getOwnerComponent();
-      oComponent.setBroadcasts && oComponent.setBroadcasts(aList);
-      oComponent.fireBroadcastReceived && oComponent.fireBroadcastReceived(oMsg);
+      // Fire the component event so DirectChat screen also receives it.
+      try {
+        this.getOwnerComponent().fireEvent("broadcastReceived", { message: oMsg });
+      } catch (e) { /* noop */ }
       // Alert if not actively viewing.
       if (this._selfActive === false || this._isHidden()) {
         this._notifyAway(oMsg);
       } else {
-        var oBundle = oComponent.getModel("i18n").getResourceBundle();
+        var oBundle = this.getOwnerComponent().getModel("i18n").getResourceBundle();
         MessageToast.show(oBundle.getText("broadcastReceivedToast",
           [oMsg.senderName || "Dispatcher"]), { duration: 5000 });
       }

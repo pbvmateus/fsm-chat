@@ -66,11 +66,116 @@ sap.ui.define([
         }.bind(this), 0);
       }
       this._resolveViaShell();
+      // Start the background transport for the technician after identity
+      // is available (needed for the personal room key).
+      this._startBgTransport();
+    },
+
+    // Persistent background transport for the technician — connected to their
+    // fsm-user-<userName> personal room so broadcasts and direct messages
+    // arrive even when the activity chat or DirectChat screen isn't open.
+    // Uses a short retry loop since identity (userName) may arrive async.
+    _startBgTransport: function () {
+      var oModel = this._contextModel;
+      var sRole = oModel.getProperty("/role");
+      if (sRole !== "technician") { return; } // dispatchers don't need this
+      var that = this;
+      var nAttempts = 0;
+      var oRetry = setInterval(function () {
+        nAttempts++;
+        var sUserName = oModel.getProperty("/userName");
+        if (sUserName || nAttempts >= 30) {
+          clearInterval(oRetry);
+          if (!sUserName) { return; }
+          that._initBgTransport(sUserName);
+        }
+      }, 200);
+    },
+
+    _initBgTransport: function (sUserName) {
+      if (this._bgTransport) { return; } // already running
+      var oModel = this._contextModel;
+      var sUserKey = sUserName.toLowerCase();
+      // Connect to the personal room — the relay auto-joins fsm-user-<key>
+      // and fsm-direct-<key> when the technician sends a join message here.
+      var oOpts = {
+        roomId: "fsm-user-" + sUserKey,
+        userId: oModel.getProperty("/userId"),
+        userName: sUserName,
+        role: "technician"
+      };
+      var that = this;
+      // Lazy-load ChatTransport.
+      sap.ui.require(["com/test/fsmchat/model/ChatTransport"], function (ChatTransport) {
+        that._bgTransport = ChatTransport.create(oOpts, {
+          onOpen: function () { /* background, no UI feedback needed */ },
+          onClose: function () {
+            // Reconnect after a delay if closed unexpectedly.
+            setTimeout(function () {
+              if (that._bgTransport) {
+                that._bgTransport = null;
+                that._initBgTransport(sUserName);
+              }
+            }, 5000);
+          },
+          onBroadcastReceived: function (m) {
+            // Fire a component event so any open controller can react.
+            that.fireEvent("broadcastReceived", { message: m });
+            // Also store in a persistent broadcasts list on the component.
+            that._bgBroadcasts = that._bgBroadcasts || [];
+            that._bgBroadcasts.unshift({
+              text: m.text,
+              senderName: m.senderName || "Dispatcher",
+              ts: m.ts || new Date().toISOString()
+            });
+            // Play a beep — the user may be on any screen.
+            that._bgBeep();
+          },
+          onDirectChat: function (m) {
+            that.fireEvent("directChatReceived", { message: m });
+          },
+          onMessage: function () {},
+          onPresence: function () {},
+          onTyping: function () {},
+          onSignal: function () {},
+          onGenericMessage: function () {},
+          onGenericBacklog: function () {},
+          onGenericClaimed: function () {},
+          onFsmRoster: function () {}
+        });
+        that._bgTransport.connect();
+      });
+    },
+
+    _bgBeep: function () {
+      try {
+        var AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) { return; }
+        if (!this._bgAudioCtx) { this._bgAudioCtx = new AC(); }
+        var ctx = this._bgAudioCtx;
+        if (ctx.state === "suspended" && ctx.resume) { ctx.resume(); }
+        var osc = ctx.createOscillator();
+        var gain = ctx.createGain();
+        osc.type = "sine"; osc.frequency.value = 880;
+        gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35);
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.start(); osc.stop(ctx.currentTime + 0.36);
+      } catch (e) { /* noop */ }
+    },
+
+    getBgBroadcasts: function () {
+      return (this._bgBroadcasts || []).slice();
     },
 
     exit: function () {
       if (this._shell && typeof this._shell.destroy === "function") {
         this._shell.destroy();
+      }
+      if (this._bgTransport) {
+        this._bgTransport.disconnect();
+        this._bgTransport = null;
       }
     },
 
