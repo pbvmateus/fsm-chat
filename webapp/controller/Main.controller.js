@@ -429,11 +429,12 @@ sap.ui.define([
 
     // Dispatcher changes broadcast mode (all / region / individual).
     onBroadcastModeChange: function (oEvent) {
-      var sKey = oEvent.getParameter("item").getKey();
+      var oItem = oEvent.getParameter("item");
+      var sKey = oItem ? oItem.getKey() : "all";
       this._model.setProperty("/broadcastMode", sKey);
       this._model.setProperty("/broadcastRegion", "");
       this._model.setProperty("/regionTechs", []);
-      // Reset selection.
+      // Reset individual selection.
       var aTargets = this._model.getProperty("/broadcastTargets") || [];
       aTargets.forEach(function (t) { t.selected = false; });
       this._model.setProperty("/broadcastTargets", aTargets);

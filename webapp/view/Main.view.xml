@@ -175,14 +175,17 @@
 
           <!-- Mode selector (shown once roster is loaded) -->
           <VBox visible="{= !!${/rosterLoaded} }" width="100%">
-            <IconTabBar
+            <SegmentedButton
               id="broadcastModeBar"
-              select=".onBroadcastModeChange"
+              selectionChange=".onBroadcastModeChange"
+              width="100%"
               class="fsmChatBroadcastTabs">
-              <IconTabFilter key="all" text="{i18n>broadcastModeAll}" icon="sap-icon://group" />
-              <IconTabFilter key="region" text="{i18n>broadcastModeRegion}" icon="sap-icon://map" />
-              <IconTabFilter key="individual" text="{i18n>broadcastModeIndividual}" icon="sap-icon://employee" />
-            </IconTabBar>
+              <items>
+                <SegmentedButtonItem key="all" text="{i18n>broadcastModeAll}" icon="sap-icon://group" />
+                <SegmentedButtonItem key="region" text="{i18n>broadcastModeRegion}" icon="sap-icon://map" />
+                <SegmentedButtonItem key="individual" text="{i18n>broadcastModeIndividual}" icon="sap-icon://employee" />
+              </items>
+            </SegmentedButton>
 
             <!-- Region picker (mode=region) -->
             <Select
