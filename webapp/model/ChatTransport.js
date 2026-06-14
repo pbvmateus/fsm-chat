@@ -74,6 +74,12 @@ sap.ui.define([], function () {
         case "generic-claimed":
           that._h.onGenericClaimed && that._h.onGenericClaimed(data);
           return;
+        case "broadcast-received":
+          that._h.onBroadcastReceived && that._h.onBroadcastReceived(data);
+          return;
+        case "fsm-roster":
+          that._h.onFsmRoster && that._h.onFsmRoster(data);
+          return;
         default:
           break;
       }
@@ -157,6 +163,39 @@ sap.ui.define([], function () {
 
   // Report whether the chat view is currently visible/active to the user, so
   // the relay can base presence on "in chat" rather than "socket open".
+  // Send a broadcast message to specific technician userIds (or all).
+  WebSocketTransport.prototype.sendBroadcast = function (sText, aTargets) {
+    this._raw({
+      type: "broadcast-message",
+      text: sText,
+      targets: aTargets || ["all"],
+      senderName: this._opts.userName,
+      senderId: this._opts.userId,
+      ts: new Date().toISOString()
+    });
+  };
+
+  // Request the FSM roster (persons + regions) via the relay proxy.
+  WebSocketTransport.prototype.requestRoster = function (oFsmCtx) {
+    this._raw({
+      type: "fsm-fetch",
+      resource: "query",
+      sql: "SELECT p.id, p.firstName, p.lastName, p.userName, p.regions FROM Person p WHERE p.plannableResource = true AND p.type = 'EMPLOYEE'",
+      token: oFsmCtx.token,
+      account: oFsmCtx.account,
+      company: oFsmCtx.company,
+      clusterHost: oFsmCtx.host
+    });
+    this._raw({
+      type: "fsm-fetch",
+      resource: "regions",
+      token: oFsmCtx.token,
+      account: oFsmCtx.account,
+      company: oFsmCtx.company,
+      clusterHost: oFsmCtx.host
+    });
+  };
+
   WebSocketTransport.prototype.sendActivity = function (bActive) {
     this._raw({ type: "activity", active: !!bActive });
   };

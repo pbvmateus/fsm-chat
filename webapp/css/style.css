@@ -369,3 +369,14 @@ html, body, #content, .sapMShell, .sapMApp {
 
 /* Sender line already styled; ensure role part is legible */
 .fsmChatSender { font-weight: 600; opacity: 0.95; }
+
+/* ===== Broadcast panel ===== */
+.fsmChatBroadcastTabs { margin-bottom: 0.75rem; }
+.fsmChatBroadcastSelect { margin-bottom: 0.5rem; }
+.fsmChatBroadcastInput { margin: 0.5rem 0; }
+.fsmChatBroadcastList { max-height: 12rem; overflow-y: auto; margin-bottom: 0.5rem; }
+.fsmChatBroadcastItem { padding: 0; }
+.fsmChatBroadcastItemRow { padding: 0.35rem 0.25rem; gap: 0.5rem; }
+.fsmChatBroadcastPreview { margin-bottom: 0.5rem; }
+.fsmChatBroadcastPreviewItem { padding: 0.25rem 0; }
+.fsmChatBroadcastMsg { padding: 0.25rem 0; gap: 0.25rem; }

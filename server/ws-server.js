@@ -185,6 +185,12 @@ wss.on("connection", (ws) => {
       if (!ws._joinedAt) ws._joinedAt = Date.now();
       addToRoom(roomId, ws);
 
+      // Every user also joins their own personal room (fsm-user-<userId>) so
+      // dispatchers can send direct/broadcast messages to specific technicians.
+      if (msg.userId && msg.role === "technician") {
+        addToRoom("fsm-user-" + msg.userId, ws);
+      }
+
       // Announce presence to existing peers (include role).
       broadcast(roomId, {
         type: "presence", roomId: roomId, userId: msg.userId,
@@ -260,6 +266,49 @@ wss.on("connection", (ws) => {
             dispatcherPresent: dispatcherPresent(roomId),
             technicianPresent: technicianPresent(roomId)
           }, ws);
+        }
+      }
+      return;
+    }
+
+    // ---- broadcast message (dispatcher → one/many/all technicians) -------
+    // { type:'broadcast-message', text, targets:['all'|userId,...],
+    //   senderName, senderId, ts }
+    // Delivers to each technician's fsm-user-<userId> room. If targets=['all']
+    // or targets is absent, delivers to every connected technician.
+    if (msg.type === "broadcast-message") {
+      if (ws._role !== "dispatcher") return;
+      const targets = Array.isArray(msg.targets) ? msg.targets : ["all"];
+      const broadcast_msg = {
+        type: "broadcast-received",
+        text: msg.text,
+        senderName: msg.senderName || ws._userName || "Dispatcher",
+        senderId: msg.senderId || ws._userId,
+        targets: targets,
+        ts: msg.ts || Date.now()
+      };
+      const payload = JSON.stringify(broadcast_msg);
+      if (targets.length === 1 && targets[0] === "all") {
+        // Send to every connected technician.
+        for (const [roomId, set] of rooms) {
+          if (!roomId.startsWith("fsm-user-")) continue;
+          for (const peer of set) {
+            if (peer.readyState === 1 && peer._role === "technician") {
+              try { peer.send(payload); } catch (e) {}
+            }
+          }
+        }
+      } else {
+        // Send to specific userIds.
+        for (const targetId of targets) {
+          const userRoom = "fsm-user-" + targetId;
+          const set = rooms.get(userRoom);
+          if (!set) continue;
+          for (const peer of set) {
+            if (peer.readyState === 1) {
+              try { peer.send(payload); } catch (e) {}
+            }
+          }
         }
       }
       return;

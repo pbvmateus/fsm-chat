@@ -53,7 +53,20 @@ sap.ui.define([
         activityCode: "",
         // Inline FSM API test (dispatcher, ?apitest=1)
         apiTest: /[?&]apitest=1/.test(window.location.search),
-        apiTestOut: "(no API test run yet)"
+        apiTestOut: "(no API test run yet)",
+        // Broadcast feature (dispatcher)
+        rosterLoaded: false,
+        rosterLoading: false,
+        technicians: [],      // [{id, firstName, lastName, userName, regions:[regionId,...]}]
+        regions: [],          // [{id, code, name}]
+        broadcastMode: "all", // "all"|"region"|"individual"
+        broadcastRegion: "",  // selected region id
+        broadcastTargets: [], // [{id,firstName,lastName,userName,selected}]
+        broadcastDraft: "",
+        broadcastSent: false,
+        // Technician: received broadcast messages
+        broadcasts: [],        // [{text, senderName, ts}]
+        broadcastCount: 0
       });
       this.getView().setModel(this._model);
 
@@ -330,7 +343,172 @@ sap.ui.define([
       this._apiTestViaRelay("query", sql);
     },
 
-    // ===== Away alerts (dispatcher messaged while technician not viewing) ====
+    // ===== Broadcast feature ================================================
+
+    onLoadRoster: function () {
+      this._loadRoster();
+    },
+
+    _loadRoster: function () {
+      var oCtx = this._ctxModel;
+      var oFsmCtx = {
+        token: oCtx.getProperty("/fsmToken"),
+        account: oCtx.getProperty("/fsmAccount"),
+        company: oCtx.getProperty("/fsmCompany"),
+        host: oCtx.getProperty("/fsmHost")
+      };
+      if (!oFsmCtx.token || !oFsmCtx.host) {
+        MessageToast.show("FSM context not ready — cannot load roster.");
+        return;
+      }
+      if (!this._transport || typeof this._transport.requestRoster !== "function") {
+        MessageToast.show("Not connected to relay — cannot load roster.");
+        return;
+      }
+      this._model.setProperty("/rosterLoading", true);
+      this._rosterPersons = null;
+      this._rosterRegions = null;
+      this._transport.requestRoster(oFsmCtx);
+    },
+
+    _onFsmRoster: function (oMsg) {
+      if (oMsg.resource === "query") {
+        // Persons — unwrap Query API alias { "p": { ... } }
+        var rows = (oMsg.data && oMsg.data.data) || [];
+        var persons = rows.map(function (row) {
+          var p = row.p || row;
+          return {
+            id: p.id,
+            firstName: p.firstName || "",
+            lastName: p.lastName || "",
+            userName: p.userName || "",
+            regions: Array.isArray(p.regions) ? p.regions : [],
+            selected: false,
+            label: (p.firstName || "") + " " + (p.lastName || "") + " (" + (p.userName || "") + ")"
+          };
+        });
+        this._rosterPersons = persons;
+      } else if (oMsg.resource === "regions") {
+        // Regions — unwrap { "region": { ... } }
+        var rows = (oMsg.data && oMsg.data.data) || [];
+        var regions = rows.map(function (row) {
+          var r = row.region || row;
+          return { id: r.id, code: r.code || "", name: r.name || r.code || "" };
+        });
+        regions.sort(function (a, b) { return a.name.localeCompare(b.name); });
+        this._rosterRegions = regions;
+      }
+      // Once both are loaded, update the model.
+      if (this._rosterPersons && this._rosterRegions) {
+        this._model.setProperty("/technicians", this._rosterPersons);
+        this._model.setProperty("/regions", this._rosterRegions);
+        this._model.setProperty("/rosterLoaded", true);
+        this._model.setProperty("/rosterLoading", false);
+        this._model.setProperty("/broadcastTargets",
+          this._rosterPersons.map(function (p) {
+            return Object.assign({}, p, { selected: false });
+          }));
+        // Populate the region Select control dynamically.
+        this._populateRegionSelect();
+      }
+    },
+
+    _populateRegionSelect: function () {
+      var oSelect = this.byId("broadcastRegionSelect");
+      if (!oSelect) { return; }
+      oSelect.removeAllItems();
+      var Item = sap.ui.core.Item;
+      oSelect.addItem(new Item({ key: "", text: this.getOwnerComponent()
+        .getModel("i18n").getResourceBundle().getText("broadcastRegionPlaceholder") }));
+      var aRegions = this._model.getProperty("/regions") || [];
+      aRegions.forEach(function (r) {
+        oSelect.addItem(new Item({ key: r.id, text: r.name }));
+      });
+    },
+
+    // Dispatcher changes broadcast mode (all / region / individual).
+    onBroadcastModeChange: function (oEvent) {
+      var sKey = oEvent.getParameter("item").getKey();
+      this._model.setProperty("/broadcastMode", sKey);
+      this._model.setProperty("/broadcastRegion", "");
+      // Reset selection.
+      var aTargets = this._model.getProperty("/broadcastTargets") || [];
+      aTargets.forEach(function (t) { t.selected = false; });
+      this._model.setProperty("/broadcastTargets", aTargets);
+    },
+
+    onBroadcastRegionChange: function (oEvent) {
+      var sRegionId = oEvent.getParameter("selectedItem").getKey();
+      this._model.setProperty("/broadcastRegion", sRegionId);
+    },
+
+    onBroadcastTargetToggle: function (oEvent) {
+      var oCtx = oEvent.getSource().getBindingContext();
+      if (!oCtx) return;
+      var sPath = oCtx.getPath() + "/selected";
+      this._model.setProperty(sPath, !this._model.getProperty(sPath));
+    },
+
+    onBroadcastSend: function () {
+      var sText = (this._model.getProperty("/broadcastDraft") || "").trim();
+      if (!sText) return;
+      var sMode = this._model.getProperty("/broadcastMode");
+      var aTargets = ["all"];
+
+      if (sMode === "region") {
+        var sRegionId = this._model.getProperty("/broadcastRegion");
+        if (!sRegionId) { MessageToast.show("Select a region first."); return; }
+        var aTechs = this._model.getProperty("/technicians") || [];
+        aTargets = aTechs
+          .filter(function (t) { return t.regions.indexOf(sRegionId) >= 0; })
+          .map(function (t) { return t.id; });
+        if (!aTargets.length) {
+          MessageToast.show("No technicians assigned to that region.");
+          return;
+        }
+      } else if (sMode === "individual") {
+        var aBroadcastTargets = this._model.getProperty("/broadcastTargets") || [];
+        aTargets = aBroadcastTargets
+          .filter(function (t) { return t.selected; })
+          .map(function (t) { return t.id; });
+        if (!aTargets.length) {
+          MessageToast.show("Select at least one technician.");
+          return;
+        }
+      }
+
+      if (!this._transport || typeof this._transport.sendBroadcast !== "function") {
+        MessageToast.show("Not connected.");
+        return;
+      }
+      this._transport.sendBroadcast(sText, aTargets);
+      this._model.setProperty("/broadcastDraft", "");
+      this._model.setProperty("/broadcastSent", true);
+      setTimeout(function () {
+        this._model.setProperty("/broadcastSent", false);
+      }.bind(this), 3000);
+      var oBundle = this.getOwnerComponent().getModel("i18n").getResourceBundle();
+      MessageToast.show(oBundle.getText("broadcastSentToast",
+        [aTargets[0] === "all" ? "all technicians" : aTargets.length + " technician(s)"]));
+    },
+
+    // Technician receives a broadcast from a dispatcher.
+    _onBroadcastReceived: function (oMsg) {
+      if (!oMsg || !oMsg.text) return;
+      var aList = this._model.getProperty("/broadcasts") || [];
+      aList = [{ text: oMsg.text, senderName: oMsg.senderName || "Dispatcher",
+        ts: oMsg.ts || new Date().toISOString() }].concat(aList);
+      this._model.setProperty("/broadcasts", aList);
+      this._model.setProperty("/broadcastCount", aList.length);
+      // Alert if not actively viewing.
+      if (this._selfActive === false || this._isHidden()) {
+        this._notifyAway(oMsg);
+      } else {
+        var oBundle = this.getOwnerComponent().getModel("i18n").getResourceBundle();
+        MessageToast.show(oBundle.getText("broadcastReceivedToast",
+          [oMsg.senderName || "Dispatcher"]), { duration: 5000 });
+      }
+    },
 
     // Request notification permission once, quietly. If denied or unsupported
     // (likely inside the FSM webview), we silently fall back to sound + banner.
@@ -475,7 +653,9 @@ sap.ui.define([
         onSignal: function (sig) { that._onSignal(sig); },
         onGenericMessage: function (g) { that._onGenericMessage(g); },
         onGenericBacklog: function (g) { that._onGenericBacklog(g); },
-        onGenericClaimed: function (g) { that._onGenericClaimed(g); }
+        onGenericClaimed: function (g) { that._onGenericClaimed(g); },
+        onFsmRoster: function (r) { that._onFsmRoster(r); },
+        onBroadcastReceived: function (m) { that._onBroadcastReceived(m); }
       });
       this._transport.connect();
     },
@@ -512,7 +692,9 @@ sap.ui.define([
         onSignal: function () { /* noop */ },
         onGenericMessage: function (g) { that._onGenericMessage(g); },
         onGenericBacklog: function (g) { that._onGenericBacklog(g); },
-        onGenericClaimed: function (g) { that._onGenericClaimed(g); }
+        onGenericClaimed: function (g) { that._onGenericClaimed(g); },
+        onFsmRoster: function (r) { that._onFsmRoster(r); },
+        onBroadcastReceived: function (m) { that._onBroadcastReceived(m); }
       });
       this._transport.connect();
     },

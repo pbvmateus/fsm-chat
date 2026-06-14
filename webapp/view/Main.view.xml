@@ -149,6 +149,99 @@
             class="fsmChatDebugLog" />
         </VBox>
 
+        <!-- ===== Dispatcher broadcast panel ===== -->
+        <VBox
+          visible="{= !!${/isDispatcher} }"
+          class="fsmChatInbox"
+          width="100%">
+          <HBox alignItems="Center" class="fsmChatInboxHead">
+            <core:Icon src="sap-icon://send" class="fsmChatInboxIcon" />
+            <Title text="{i18n>broadcastTitle}" level="H3" class="fsmChatInboxTitle" />
+          </HBox>
+          <Text text="{i18n>broadcastHint}" class="fsmChatInboxHint" />
+
+          <!-- Load roster button (shown until loaded) -->
+          <Button
+            visible="{= !${/rosterLoaded} &amp;&amp; !${/rosterLoading} }"
+            text="{i18n>broadcastLoadRoster}"
+            type="Emphasized"
+            icon="sap-icon://synchronize"
+            press=".onLoadRoster"
+            class="fsmChatInboxPickBtn" />
+          <Text
+            visible="{= !!${/rosterLoading} }"
+            text="{i18n>broadcastLoading}"
+            class="fsmChatInboxHint" />
+
+          <!-- Mode selector (shown once roster is loaded) -->
+          <VBox visible="{= !!${/rosterLoaded} }" width="100%">
+            <IconTabBar
+              id="broadcastModeBar"
+              select=".onBroadcastModeChange"
+              class="fsmChatBroadcastTabs">
+              <IconTabFilter key="all" text="{i18n>broadcastModeAll}" icon="sap-icon://group" />
+              <IconTabFilter key="region" text="{i18n>broadcastModeRegion}" icon="sap-icon://map" />
+              <IconTabFilter key="individual" text="{i18n>broadcastModeIndividual}" icon="sap-icon://employee" />
+            </IconTabBar>
+
+            <!-- Region picker (mode=region) -->
+            <Select
+              id="broadcastRegionSelect"
+              visible="{= ${/broadcastMode} === 'region' }"
+              width="100%"
+              forceSelection="false"
+              change=".onBroadcastRegionChange"
+              class="fsmChatBroadcastSelect">
+              <items>
+                <core:ListItem key="" text="{i18n>broadcastRegionPlaceholder}" />
+              </items>
+            </Select>
+            <List
+              visible="{= ${/broadcastMode} === 'region' &amp;&amp; !!${/broadcastRegion} }"
+              items="{ path: '/technicians', templateShareable: false }"
+              showSeparators="None"
+              class="fsmChatBroadcastPreview">
+              <CustomListItem
+                visible="{= ${regions}.indexOf(${/broadcastRegion}) >= 0 }"
+                class="fsmChatBroadcastPreviewItem">
+                <Text text="{label}" class="fsmChatInboxName" />
+              </CustomListItem>
+            </List>
+
+            <!-- Individual picker (mode=individual) -->
+            <List
+              visible="{= ${/broadcastMode} === 'individual' }"
+              items="{ path: '/broadcastTargets', templateShareable: false }"
+              showSeparators="Inner"
+              class="fsmChatBroadcastList">
+              <CustomListItem press=".onBroadcastTargetToggle" class="fsmChatBroadcastItem">
+                <HBox alignItems="Center" width="100%" class="fsmChatBroadcastItemRow">
+                  <CheckBox selected="{selected}" editable="false" />
+                  <VBox>
+                    <Text text="{= ${firstName} + ' ' + ${lastName} }" class="fsmChatInboxName" />
+                    <Text text="{userName}" class="fsmChatInboxActivity" />
+                  </VBox>
+                </HBox>
+              </CustomListItem>
+            </List>
+
+            <!-- Message input + send -->
+            <TextArea
+              value="{/broadcastDraft}"
+              placeholder="{i18n>broadcastDraftPlaceholder}"
+              rows="3"
+              width="100%"
+              class="fsmChatBroadcastInput" />
+            <Button
+              text="{i18n>broadcastSendBtn}"
+              type="Emphasized"
+              icon="sap-icon://paper-plane"
+              enabled="{= !!${/broadcastDraft} &amp;&amp; ${/broadcastDraft}.trim().length > 0 }"
+              press=".onBroadcastSend"
+              class="fsmChatInboxPickBtn" />
+          </VBox>
+        </VBox>
+
         <!-- ===== Dispatcher inbox: unattended conversations ===== -->
         <VBox
           visible="{= !!${/isDispatcher} &amp;&amp; ${/unattendedCount} > 0 }"
@@ -218,6 +311,33 @@
         class="fsmChatScroll">
 
         <VBox id="msgContainer" class="fsmChatMsgContainer" width="100%">
+
+          <!-- Technician: broadcast messages received from dispatchers -->
+          <VBox
+            visible="{= !!${/isTechnician} &amp;&amp; ${/broadcasts}.length > 0 }"
+            class="fsmChatInbox"
+            width="100%">
+            <HBox alignItems="Center" class="fsmChatInboxHead">
+              <core:Icon src="sap-icon://megaphone" class="fsmChatInboxIcon" />
+              <Title text="{i18n>broadcastReceivedTitle}" level="H3" class="fsmChatInboxTitle" />
+            </HBox>
+            <Text text="{i18n>broadcastReceivedHint}" class="fsmChatInboxHint" />
+            <List
+              items="{ path: '/broadcasts', templateShareable: false }"
+              showSeparators="Inner"
+              class="fsmChatInboxList">
+              <CustomListItem class="fsmChatInboxItem">
+                <VBox class="fsmChatBroadcastMsg">
+                  <Text text="{text}" class="fsmChatMsgText" />
+                  <HBox>
+                    <Text text="{senderName}" class="fsmChatInboxName" />
+                    <Text text=" · " class="fsmChatInboxActivity" />
+                    <Text text="{ts}" class="fsmChatInboxActivity" />
+                  </HBox>
+                </VBox>
+              </CustomListItem>
+            </List>
+          </VBox>
 
           <!-- Video panel (visible during a call) -->
           <VBox
