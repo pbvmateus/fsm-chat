@@ -51,8 +51,16 @@ sap.ui.define([
         var m = oEvent.getParameter("message");
         if (m) { that._onDirectIncoming(m); }
       };
+      this._onHistoryBound = function (oEvent) {
+        var aItems = oEvent.getParameter("items") || [];
+        if (aItems.length) {
+          that._model.setProperty("/broadcasts", aItems.slice());
+          that._model.setProperty("/broadcastCount", aItems.length);
+        }
+      };
       this.getOwnerComponent().attachEvent("broadcastReceived", this._onBroadcastBound);
       this.getOwnerComponent().attachEvent("directChatReceived", this._onDirectBound);
+      this.getOwnerComponent().attachEvent("broadcastHistoryLoaded", this._onHistoryBound);
     },
 
     // Pull existing broadcasts from the component's persistent background list.
@@ -219,6 +227,7 @@ sap.ui.define([
       var oComp = this.getOwnerComponent();
       if (this._onBroadcastBound) oComp.detachEvent("broadcastReceived", this._onBroadcastBound);
       if (this._onDirectBound) oComp.detachEvent("directChatReceived", this._onDirectBound);
+      if (this._onHistoryBound) oComp.detachEvent("broadcastHistoryLoaded", this._onHistoryBound);
     }
   });
 });

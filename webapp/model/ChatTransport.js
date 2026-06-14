@@ -77,6 +77,9 @@ sap.ui.define([], function () {
         case "broadcast-received":
           that._h.onBroadcastReceived && that._h.onBroadcastReceived(data);
           return;
+        case "broadcast-history":
+          that._h.onBroadcastHistory && that._h.onBroadcastHistory(data);
+          return;
         case "direct-chat":
           that._h.onDirectChat && that._h.onDirectChat(data);
           return;

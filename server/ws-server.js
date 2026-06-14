@@ -40,8 +40,30 @@ const GENERIC_ROOM = "fsm-generic";
 const GENERIC_MAX = 200;            // cap retained unattended messages
 const GENERIC_TTL_MS = 24 * 60 * 60 * 1000; // drop entries older than 24h
 
+// Per-technician broadcast history — replayed when the technician connects.
+// Map of userName -> [{text, senderName, senderId, ts}]
+const BROADCAST_MAX_PER_USER = 100;
+const broadcastHistory = new Map(); // userName -> messages[]
+
+function storeBroadcast(targetUserName, msg) {
+  if (!targetUserName) return;
+  const key = targetUserName.toLowerCase();
+  if (!broadcastHistory.has(key)) broadcastHistory.set(key, []);
+  const arr = broadcastHistory.get(key);
+  arr.push(msg);
+  // Cap per-user history and drop entries older than 24h
+  const cutoff = Date.now() - GENERIC_TTL_MS;
+  while (arr.length > 0 && (arr.length > BROADCAST_MAX_PER_USER || arr[0].ts < cutoff)) {
+    arr.shift();
+  }
+}
+
+function getBroadcastHistory(userKey) {
+  return broadcastHistory.get(userKey.toLowerCase()) || [];
+}
+
 // Bump this when deploying so /rooms confirms the running build is current.
-const BUILD_MARKER = "presence-active-2";
+const BUILD_MARKER = "presence-active-3";
 // Liveness ping interval (also used by the heartbeat below).
 const HEARTBEAT_MS = 10000;
 
@@ -197,6 +219,24 @@ wss.on("connection", (ws) => {
         addToRoom("fsm-user-" + uKey, ws);
         addToRoom("fsm-direct-" + uKey, ws);
         ws._userKey = uKey;
+
+        // Replay any broadcasts sent while this technician was offline.
+        // Merge their personal history with the "all" global history,
+        // deduplicate by ts, sort oldest-first, and send as a single replay.
+        const personal = getBroadcastHistory(uKey);
+        const global   = getBroadcastHistory("*");
+        const seen = new Set();
+        const merged = [...personal, ...global]
+          .filter(m => { const k = m.ts + "|" + m.text; if (seen.has(k)) return false; seen.add(k); return true; })
+          .sort((a, b) => (a.ts || 0) - (b.ts || 0));
+        if (merged.length > 0) {
+          try {
+            ws.send(JSON.stringify({
+              type: "broadcast-history",
+              items: merged
+            }));
+          } catch (e) { /* noop */ }
+        }
       }
 
       // Announce presence to existing peers (include role).
@@ -346,7 +386,10 @@ wss.on("connection", (ws) => {
       };
       const payload = JSON.stringify(broadcast_msg);
       if (targets.length === 1 && targets[0] === "all") {
-        // Send to every connected technician.
+        // Send to every connected technician and store for offline ones.
+        // For "all", we store the message globally (under key "*") — when a
+        // technician joins we replay anything in "*" they haven't seen yet.
+        storeBroadcast("*", broadcast_msg);
         for (const [roomId, set] of rooms) {
           if (!roomId.startsWith("fsm-user-")) continue;
           for (const peer of set) {
@@ -356,8 +399,9 @@ wss.on("connection", (ws) => {
           }
         }
       } else {
-        // Send to specific userIds.
+        // Targeted: store per-technician and deliver if online.
         for (const targetId of targets) {
+          storeBroadcast(targetId, broadcast_msg);
           const userRoom = "fsm-user-" + targetId;
           const set = rooms.get(userRoom);
           if (!set) continue;

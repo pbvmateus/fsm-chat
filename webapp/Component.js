@@ -78,16 +78,17 @@ sap.ui.define([
     _startBgTransport: function () {
       var oModel = this._contextModel;
       var sRole = oModel.getProperty("/role");
-      if (sRole !== "technician") { return; } // dispatchers don't need this
+      if (sRole !== "technician") { return; }
       var that = this;
       var nAttempts = 0;
       var oRetry = setInterval(function () {
         nAttempts++;
         var sUserName = oModel.getProperty("/userName");
-        if (sUserName || nAttempts >= 30) {
+        // Reject placeholder fallbacks — wait for the real shell identity.
+        var bReal = sUserName && sUserName !== "Technician" && sUserName !== "Dispatcher";
+        if (bReal || nAttempts >= 50) {
           clearInterval(oRetry);
-          if (!sUserName) { return; }
-          that._initBgTransport(sUserName);
+          if (bReal) { that._initBgTransport(sUserName); }
         }
       }, 200);
     },
@@ -121,7 +122,7 @@ sap.ui.define([
           onBroadcastReceived: function (m) {
             // Fire a component event so any open controller can react.
             that.fireEvent("broadcastReceived", { message: m });
-            // Also store in a persistent broadcasts list on the component.
+            // Store in a persistent broadcasts list on the component.
             that._bgBroadcasts = that._bgBroadcasts || [];
             that._bgBroadcasts.unshift({
               text: m.text,
@@ -130,6 +131,34 @@ sap.ui.define([
             });
             // Play a beep — the user may be on any screen.
             that._bgBeep();
+          },
+          onBroadcastHistory: function (data) {
+            // Relay replayed broadcasts sent while this technician was offline.
+            var items = (data && data.items) || [];
+            if (!items.length) { return; }
+            var existing = that._bgBroadcasts || [];
+            // Build a dedup set from existing.
+            var existingKeys = new Set(existing.map(function (m) {
+              return m.ts + "|" + m.text;
+            }));
+            var toAdd = items
+              .filter(function (m) {
+                return !existingKeys.has((m.ts || "") + "|" + m.text);
+              })
+              .map(function (m) {
+                return {
+                  text: m.text,
+                  senderName: m.senderName || "Dispatcher",
+                  ts: m.ts || new Date().toISOString()
+                };
+              });
+            if (!toAdd.length) { return; }
+            // Merge: history items are oldest-first from relay, prepend newer ones.
+            that._bgBroadcasts = existing.concat(toAdd.reverse());
+            // Fire component event so any open controller refreshes its list.
+            that.fireEvent("broadcastHistoryLoaded", {
+              items: that._bgBroadcasts.slice()
+            });
           },
           onDirectChat: function (m) {
             that.fireEvent("directChatReceived", { message: m });
@@ -324,6 +353,26 @@ sap.ui.define([
           if (sToken) oModel.setProperty("/fsmToken", sToken);
           // Store the raw auth object for diagnostics.
           oModel.setProperty("/fsmAuthRaw", JSON.stringify(ctx.auth || null));
+
+          // If the shell provided a real userName and the bg transport is using
+          // a placeholder or a different name from the URL, restart it with the
+          // correct identity so broadcast rooms are keyed correctly.
+          var sCtxUser = ctx.user || ctx.userName || null;
+          if (sCtxUser) {
+            var sBgUser = that._bgTransport &&
+              that._bgTransport._opts && that._bgTransport._opts.userName;
+            if (sBgUser && sBgUser.toLowerCase() !== sCtxUser.toLowerCase()) {
+              if (that._bgTransport) {
+                that._bgTransport.disconnect();
+                that._bgTransport = null;
+              }
+              that._initBgTransport(sCtxUser);
+            } else if (!that._bgTransport &&
+                oModel.getProperty("/role") === "technician") {
+              // Bg transport wasn't started yet (was waiting for real identity).
+              that._initBgTransport(sCtxUser);
+            }
+          }
         },
         function onSelection(activityId) {
           // The Shell told us which Service Call / Activity is selected.
