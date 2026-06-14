@@ -741,7 +741,17 @@ sap.ui.define([
       this._setConn("connecting");
       var that = this;
       this._transport = ChatTransport.create(oOpts, {
-        onOpen: function () { that._setConn("online"); },
+        onOpen: function () {
+          that._setConn("online");
+          // Auto-load the technician roster for the dispatcher as soon as
+          // the relay connection is ready — no manual button click needed.
+          // Small delay so the FSM token has time to arrive via REQUIRE_AUTHENTICATION.
+          if (that._ctxModel.getProperty("/role") === "dispatcher" &&
+              !that._model.getProperty("/rosterLoaded") &&
+              !that._model.getProperty("/rosterLoading")) {
+            setTimeout(function () { that._loadRoster(); }, 1500);
+          }
+        },
         onClose: function () { that._setConn("offline"); },
         onMessage: function () { /* no activity thread in generic-only mode */ },
         onPresence: function (p) { that._onPresence(p); },
@@ -862,19 +872,22 @@ sap.ui.define([
     // "Start direct chat" action in the broadcast panel.
     _openDirectRoom: function (sUserKey, sDisplayName) {
       var sDirectRoom = "fsm-direct-" + sUserKey.toLowerCase();
-      // Mirror what _bindToActivity does: clear the chat, mark as bound,
-      // set display fields, then connect the transport.
-      this._model.setProperty("/messages", []);
-      this._model.setProperty("/peerName", sDisplayName || sUserKey);
-      this._model.setProperty("/activityCode", "Direct · " + (sDisplayName || sUserKey));
-      this._model.setProperty("/dispatcherPresent", false);
-      this._model.setProperty("/technicianPresent", false);
-      this._model.setProperty("/peerTyping", false);
+      var sName = sDisplayName || sUserKey;
+      // Connect the transport first — _connectRoom clears messages/peerName.
+      this._currentRoom = null;
+      this._connectRoom(sDirectRoom);
+      // Override the labels _connectRoom set with friendlier direct-chat values.
+      this._model.setProperty("/activityCode", "Direct · " + sName);
+      this._model.setProperty("/peerName", sName);
       this._ctxModel.setProperty("/_bound", true);
       this._ctxModel.setProperty("/objectId", "direct:" + sUserKey);
       this._ctxModel.setProperty("/_contextSource", "direct");
-      this._currentRoom = null;
-      this._connectRoom(sDirectRoom);
+      // Tell the relay this conversation is now attended so it clears the
+      // backlog and stops routing new messages from this technician to the
+      // generic inbox. The relay triggers 'generic-claimed' to other dispatchers.
+      if (this._transport && typeof this._transport.joinSecondaryRoom === "function") {
+        this._transport.joinSecondaryRoom("fsm-generic");
+      }
     },
 
     /**

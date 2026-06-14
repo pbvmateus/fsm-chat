@@ -161,8 +161,10 @@ function pruneBacklog() {
 }
 
 function activityIdFromRoom(roomId) {
-  return (roomId && roomId.indexOf("fsm-room-") === 0)
-    ? roomId.slice("fsm-room-".length) : roomId;
+  if (!roomId) return roomId;
+  if (roomId.indexOf("fsm-room-") === 0) return roomId.slice("fsm-room-".length);
+  if (roomId.indexOf("fsm-direct-") === 0) return "direct:" + roomId.slice("fsm-direct-".length);
+  return roomId;
 }
 
 wss.on("connection", (ws) => {

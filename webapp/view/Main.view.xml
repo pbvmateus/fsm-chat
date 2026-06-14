@@ -176,11 +176,11 @@
           </HBox>
           <Text text="{i18n>broadcastHint}" class="fsmChatInboxHint" />
 
-          <!-- Load roster button (shown until loaded) -->
+          <!-- Roster auto-loads on connect; show refresh button if needed -->
           <Button
             visible="{= !${/rosterLoaded} &amp;&amp; !${/rosterLoading} }"
             text="{i18n>broadcastLoadRoster}"
-            type="Emphasized"
+            type="Transparent"
             icon="sap-icon://synchronize"
             press=".onLoadRoster"
             class="fsmChatInboxPickBtn" />
