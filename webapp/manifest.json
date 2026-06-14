@@ -96,12 +96,21 @@
           "name": "main",
           "pattern": "",
           "target": "main"
+        },
+        {
+          "name": "directchat",
+          "pattern": "directchat",
+          "target": "directchat"
         }
       ],
       "targets": {
         "main": {
           "viewId": "main",
           "viewName": "Main"
+        },
+        "directchat": {
+          "viewId": "directchat",
+          "viewName": "DirectChat"
         }
       }
     }
@@ -110,7 +119,10 @@
     "clientIdentifier": "fsm-chat-extension",
     "extension": {
       "type": "ScreenExtension",
-      "supportedClients": ["MOBILE", "SHELL"],
+      "supportedClients": [
+        "MOBILE",
+        "SHELL"
+      ],
       "objectType": "ServiceCall",
       "title": "{{appTitle}}",
       "shortTitle": "Chat",

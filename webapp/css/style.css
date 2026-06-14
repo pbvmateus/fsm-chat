@@ -389,3 +389,13 @@ html, body, #content, .sapMShell, .sapMApp {
 .fsmChatBroadcastIconSel { color: var(--sapPositiveColor, #30914c); }
 .fsmChatBroadcastIconUnsel { color: #bbb; }
 .fsmChatBroadcastSearchInput { margin-bottom: 0.4rem; }
+
+/* ===== Direct chat screen ===== */
+.fsmDirectTabBar { margin: 0; }
+.fsmDirectTabBar .sapMITBHead { background: var(--sapList_Background, #fff); }
+.fsmDirectTabContent { padding: 0.5rem; min-height: 50vh; }
+.fsmDirectBroadcastList { background: transparent; }
+.fsmDirectBroadcastMsg { padding: 0.5rem 0; gap: 0.3rem; }
+.fsmDirectBroadcastHead { gap: 0.4rem; margin-bottom: 0.15rem; }
+.fsmDirectBroadcastIcon { color: var(--sapHighlightColor, #0a6ed1); font-size: 0.9rem; }
+.fsmDirectBroadcastText { font-size: 0.9rem; color: var(--sapTextColor, #32363a); }

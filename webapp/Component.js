@@ -264,6 +264,19 @@ sap.ui.define([
       this._bindToActivity(sActivityId, "manual");
     },
 
+    // Shared broadcast store — allows DirectChat controller to read broadcasts
+    // that arrived via Main controller's _onBroadcastReceived.
+    getBroadcasts: function () { return this._broadcasts || []; },
+    setBroadcasts: function (a) { this._broadcasts = a; },
+    onBroadcastReceived: function (fn) {
+      if (!this._broadcastListeners) { this._broadcastListeners = []; }
+      this._broadcastListeners.push(fn);
+    },
+    fireBroadcastReceived: function (oMsg) {
+      if (!this._broadcastListeners) { return; }
+      this._broadcastListeners.forEach(function (fn) { try { fn(oMsg); } catch (e) {} });
+    },
+
     /**
      * Public: dispatcher leaves the current activity and returns to the unbound
      * (generic inbox) state. Clears the bound flag/room so the view shows the

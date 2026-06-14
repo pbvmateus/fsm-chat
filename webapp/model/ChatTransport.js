@@ -77,6 +77,9 @@ sap.ui.define([], function () {
         case "broadcast-received":
           that._h.onBroadcastReceived && that._h.onBroadcastReceived(data);
           return;
+        case "direct-chat":
+          that._h.onDirectChat && that._h.onDirectChat(data);
+          return;
         case "fsm-roster":
           that._h.onFsmRoster && that._h.onFsmRoster(data);
           return;
@@ -163,6 +166,19 @@ sap.ui.define([], function () {
 
   // Report whether the chat view is currently visible/active to the user, so
   // the relay can base presence on "in chat" rather than "socket open".
+  // Send a message in the technician's always-open direct channel.
+  WebSocketTransport.prototype.sendDirectChat = function (sText, sRoomId) {
+    this._raw({
+      type: "direct-chat",
+      roomId: sRoomId || null,
+      text: sText,
+      userName: this._opts.userName,
+      userId: this._opts.userId,
+      role: this._opts.role,
+      ts: new Date().toISOString()
+    });
+  };
+
   // Send a broadcast message to specific technician userIds (or all).
   WebSocketTransport.prototype.sendBroadcast = function (sText, aTargets) {
     this._raw({
@@ -372,6 +388,7 @@ sap.ui.define([], function () {
   };
   LocalTransport.prototype.leaveSecondaryRoom = function () { /* noop */ };
   LocalTransport.prototype.sendActivity = function () { /* noop */ };
+  LocalTransport.prototype.sendDirectChat = function () { /* noop */ };
 
   // Signaling over BroadcastChannel (same-machine only; real cross-device video
   // requires the relay). Provided so the API matches WebSocketTransport.

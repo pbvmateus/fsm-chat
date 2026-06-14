@@ -185,10 +185,12 @@ wss.on("connection", (ws) => {
       if (!ws._joinedAt) ws._joinedAt = Date.now();
       addToRoom(roomId, ws);
 
-      // Every user also joins their own personal room (fsm-user-<userId>) so
-      // dispatchers can send direct/broadcast messages to specific technicians.
+      // Every technician also joins two personal rooms:
+      // fsm-user-<userId>   — for broadcast delivery (one-way from dispatcher)
+      // fsm-direct-<userId> — for the always-open two-way direct channel
       if (msg.userId && msg.role === "technician") {
         addToRoom("fsm-user-" + msg.userId, ws);
+        addToRoom("fsm-direct-" + msg.userId, ws);
       }
 
       // Announce presence to existing peers (include role).
@@ -267,6 +269,54 @@ wss.on("connection", (ws) => {
             technicianPresent: technicianPresent(roomId)
           }, ws);
         }
+      }
+      return;
+    }
+
+    // ---- direct chat (technician ↔ dispatchers, no activity needed) -----
+    // Technician sends to their own fsm-direct-<userId> room. Any dispatcher
+    // who has joined that room receives it. If no dispatcher is present, the
+    // message is copied to fsm-generic so dispatchers see it in their inbox.
+    // Dispatchers can also send direct-chat to fsm-direct-<userId> to reply.
+    if (msg.type === "direct-chat") {
+      const directRoom = msg.roomId || (ws._userId ? "fsm-direct-" + ws._userId : null);
+      if (!directRoom) { return; }
+      const payload = Object.assign({}, msg, {
+        type: "direct-chat",
+        roomId: directRoom,
+        userId: ws._userId,
+        userName: ws._userName || msg.userName,
+        role: ws._role,
+        ts: msg.ts || Date.now()
+      });
+      // Make sure sender is in the direct room.
+      if (!ws._rooms || !ws._rooms.has(directRoom)) { addToRoom(directRoom, ws); }
+      // Deliver to everyone else in the direct room.
+      broadcast(directRoom, payload, ws);
+      // If technician sent this and no dispatcher is in the room → notify generic.
+      if (ws._role === "technician" && !dispatcherPresent(directRoom)) {
+        const techUserId = directRoom.replace("fsm-direct-", "");
+        const entry = {
+          activityId: "direct:" + techUserId,
+          roomId: directRoom,
+          text: msg.text,
+          userId: ws._userId,
+          userName: ws._userName || msg.userName,
+          ts: Date.now(),
+          isDirect: true
+        };
+        genericBacklog.push(entry);
+        pruneBacklog();
+        broadcast(GENERIC_ROOM, {
+          type: "generic-message",
+          activityId: "direct:" + techUserId,
+          roomId: directRoom,
+          text: msg.text,
+          userId: ws._userId,
+          userName: ws._userName || msg.userName,
+          ts: entry.ts,
+          isDirect: true
+        });
       }
       return;
     }

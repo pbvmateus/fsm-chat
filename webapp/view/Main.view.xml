@@ -46,12 +46,28 @@
           </HBox>
           <HBox class="fsmChatHeaderRight" alignItems="Center">
             <Button
+              id="directChatNavBtn"
+              icon="sap-icon://discussion"
+              type="Transparent"
+              tooltip="{i18n>directChatNavTip}"
+              visible="{= !!${/isTechnician} }"
+              press=".onNavToDirectChat"
+              class="fsmChatVideoBtn" />
+            <Button
               id="videoBtn"
               icon="sap-icon://video"
               type="Transparent"
               tooltip="{i18n>shareVideo}"
               visible="{= !!${context>/_bound} &amp;&amp; ${/videoSupported} &amp;&amp; ${context>/role} === 'technician' &amp;&amp; !${/videoActive} }"
               press=".onStartVideo"
+              class="fsmChatVideoBtn" />
+            <Button
+              id="directChatBtn"
+              icon="sap-icon://discussion-2"
+              type="Transparent"
+              tooltip="{i18n>directChatNavBtn}"
+              visible="{= ${context>/role} === 'technician' }"
+              press=".onNavToDirectChat"
               class="fsmChatVideoBtn" />
             <Button
               id="videoEndBtn"

@@ -530,16 +530,22 @@ sap.ui.define([
     // Technician receives a broadcast from a dispatcher.
     _onBroadcastReceived: function (oMsg) {
       if (!oMsg || !oMsg.text) return;
+      var oDate = oMsg.ts ? new Date(oMsg.ts) : new Date();
+      var sTime = oDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      var oEntry = { text: oMsg.text, senderName: oMsg.senderName || "Dispatcher", ts: sTime };
       var aList = this._model.getProperty("/broadcasts") || [];
-      aList = [{ text: oMsg.text, senderName: oMsg.senderName || "Dispatcher",
-        ts: oMsg.ts || new Date().toISOString() }].concat(aList);
+      aList = [oEntry].concat(aList);
       this._model.setProperty("/broadcasts", aList);
       this._model.setProperty("/broadcastCount", aList.length);
+      // Share with DirectChat controller via Component store.
+      var oComponent = this.getOwnerComponent();
+      oComponent.setBroadcasts && oComponent.setBroadcasts(aList);
+      oComponent.fireBroadcastReceived && oComponent.fireBroadcastReceived(oMsg);
       // Alert if not actively viewing.
       if (this._selfActive === false || this._isHidden()) {
         this._notifyAway(oMsg);
       } else {
-        var oBundle = this.getOwnerComponent().getModel("i18n").getResourceBundle();
+        var oBundle = oComponent.getModel("i18n").getResourceBundle();
         MessageToast.show(oBundle.getText("broadcastReceivedToast",
           [oMsg.senderName || "Dispatcher"]), { duration: 5000 });
       }
@@ -839,6 +845,10 @@ sap.ui.define([
      * unbind the app, which the onActivityUnbound listener turns into a
      * generic-only reconnect.
      */
+    onNavToDirectChat: function () {
+      this.getOwnerComponent().getRouter().navTo("directchat");
+    },
+
     onLeaveActivity: function () {
       var sRoom = this._currentRoom;
       if (this._transport && sRoom && sRoom.indexOf("fsm-room-") === 0 &&
@@ -849,6 +859,10 @@ sap.ui.define([
         this._transport.leaveSecondaryRoom(sRoom);
       }
       this.getOwnerComponent().unbindActivity();
+    },
+
+    onNavToDirectChat: function () {
+      this.getOwnerComponent().getRouter().navTo("directchat");
     },
 
     onBindManual: function () {
