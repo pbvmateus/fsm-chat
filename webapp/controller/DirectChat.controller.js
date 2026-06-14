@@ -185,21 +185,23 @@ sap.ui.define([
 
     _onDirectIncoming: function (oMsg) {
       if (!oMsg || !oMsg.text) { return; }
-      var sMyId = this._ctxModel.getProperty("/userId");
-      var sMyName = this._ctxModel.getProperty("/userName");
-      var bMine = oMsg.userId === sMyId ||
-        (oMsg.userName && sMyName && oMsg.userName.toLowerCase() === sMyName.toLowerCase());
-      // Skip echoes of our own messages — we already added them optimistically
-      // when the user pressed send. The relay echoes to the bg transport socket
-      // (a different socket than the one that sent), which would duplicate.
+      var sMyId   = this._ctxModel.getProperty("/userId");
+      var sMyRole = this._ctxModel.getProperty("/role");
+      // A message is "mine" (an echo of what I sent) ONLY if it comes from the
+      // same role as me. Matching by userName is WRONG because in some tenants
+      // the dispatcher and technician share the same userName (e.g. PMATEUS) —
+      // that would make the technician discard the dispatcher's messages.
+      // The incoming role tells us who actually sent it.
+      var sMsgRole = oMsg.role || "";
+      var bMine = (sMsgRole && sMyRole && sMsgRole === sMyRole) ||
+                  (oMsg.userId && sMyId && oMsg.userId === sMyId);
+      // Skip echoes of our own messages — already added optimistically on send.
       if (bMine) { return; }
-      // Deduplicate true double-deliveries (same message on both sockets) by
-      // tracking a short-lived set of recently-seen message keys (ts+text+sender).
+      // Deduplicate true double-deliveries (same message on both sockets).
       var sKey = (oMsg.ts || "") + "|" + oMsg.text + "|" + (oMsg.userId || oMsg.userName || "");
       this._directSeen = this._directSeen || {};
       if (this._directSeen[sKey]) { return; }
       this._directSeen[sKey] = Date.now();
-      // Prune old entries (older than 10s) to bound memory.
       var nNow = Date.now();
       for (var k in this._directSeen) {
         if (nNow - this._directSeen[k] > 10000) { delete this._directSeen[k]; }
