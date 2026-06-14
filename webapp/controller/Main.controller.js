@@ -137,6 +137,22 @@ sap.ui.define([
       };
       this.getOwnerComponent().attachEvent("broadcastReceived", this._onCompBroadcast);
 
+      // When the shell provides the real userName (after the placeholder), and
+      // we're a dispatcher connected to the generic room, reconnect so the
+      // socket re-joins with the correct identity (shown in /rooms and used in
+      // direct-chat sender labels).
+      var that2 = this;
+      this._onContextReady = function () {
+        if (that2._ctxModel.getProperty("/role") === "dispatcher" &&
+            that2._currentRoom === "fsm-generic") {
+          // Force a reconnect with the now-correct userName.
+          if (that2._transport) { that2._transport.disconnect(); that2._transport = null; }
+          that2._currentRoom = null;
+          that2._connectGenericOnly();
+        }
+      };
+      this.getOwnerComponent().attachEvent("contextReady", this._onContextReady);
+
       // Clean up on exit.
       this.getView().addEventDelegate({ onExit: this._teardown.bind(this) });
     },
@@ -151,6 +167,13 @@ sap.ui.define([
         } catch (e) { /* noop */ }
         this._onCompBroadcast = null;
       }
+      if (this._onContextReady) {
+        try {
+          this.getOwnerComponent().detachEvent("contextReady", this._onContextReady);
+        } catch (e) { /* noop */ }
+        this._onContextReady = null;
+      }
+      if (this._rosterPoll) { clearInterval(this._rosterPoll); }
     },
 
     _teardown: function () {
@@ -364,6 +387,29 @@ sap.ui.define([
 
     onLoadRoster: function () {
       this._loadRoster();
+    },
+
+    // Poll for the FSM token (arrives async via REQUIRE_AUTHENTICATION) and
+    // load the roster the moment it's ready, rather than after a fixed delay.
+    _scheduleRosterLoad: function () {
+      var that = this;
+      if (this._rosterPoll) { clearInterval(this._rosterPoll); }
+      var nAttempts = 0;
+      this._rosterPoll = setInterval(function () {
+        nAttempts++;
+        var sToken = that._ctxModel.getProperty("/fsmToken");
+        if (that._model.getProperty("/rosterLoaded") ||
+            that._model.getProperty("/rosterLoading")) {
+          clearInterval(that._rosterPoll); return;
+        }
+        if (sToken) {
+          clearInterval(that._rosterPoll);
+          that._loadRoster();
+        } else if (nAttempts >= 40) {  // ~8s max
+          clearInterval(that._rosterPoll);
+          // Token never arrived — leave the manual refresh button available.
+        }
+      }, 200);
     },
 
     _loadRoster: function () {
@@ -768,13 +814,13 @@ sap.ui.define([
       this._transport = ChatTransport.create(oOpts, {
         onOpen: function () {
           that._setConn("online");
-          // Auto-load the technician roster for the dispatcher as soon as
-          // the relay connection is ready — no manual button click needed.
-          // Small delay so the FSM token has time to arrive via REQUIRE_AUTHENTICATION.
+          // Auto-load the technician roster for the dispatcher as soon as the
+          // FSM token is available (arrives via REQUIRE_AUTHENTICATION). Poll
+          // briefly rather than waiting a fixed delay so it loads ASAP.
           if (that._ctxModel.getProperty("/role") === "dispatcher" &&
               !that._model.getProperty("/rosterLoaded") &&
               !that._model.getProperty("/rosterLoading")) {
-            setTimeout(function () { that._loadRoster(); }, 1500);
+            that._scheduleRosterLoad();
           }
         },
         onClose: function () { that._setConn("offline"); },

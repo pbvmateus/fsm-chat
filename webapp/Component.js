@@ -32,7 +32,12 @@ sap.ui.define([
     metadata: {
       manifest: "json",
       events: {
-        activityBound: {}
+        activityBound: {},
+        activityUnbound: {},
+        contextReady: {},
+        broadcastReceived: {},
+        directChatReceived: {},
+        broadcastHistoryLoaded: {}
       }
     },
 
@@ -339,11 +344,18 @@ sap.ui.define([
           if (!ctx) { return; }
 
           // Identity: prefer real Shell user over the placeholder.
-          if (ctx.user) {
+          var bUserNameChanged = false;
+          if (ctx.user && ctx.user !== oModel.getProperty("/userName")) {
             oModel.setProperty("/userName", ctx.user);
+            bUserNameChanged = true;
           }
           if (ctx.userId) {
             oModel.setProperty("/userId", ctx.userId);
+          }
+          // Notify controllers that the real identity is now available so they
+          // can reconnect transports that joined with the placeholder name.
+          if (bUserNameChanged) {
+            that.fireEvent("contextReady", { userName: ctx.user });
           }
           // Stash company/account for potential room namespacing.
           if (ctx.companyId) {

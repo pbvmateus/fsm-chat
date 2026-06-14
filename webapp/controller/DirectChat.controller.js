@@ -181,7 +181,24 @@ sap.ui.define([
     _onDirectIncoming: function (oMsg) {
       if (!oMsg || !oMsg.text) { return; }
       var sMyId = this._ctxModel.getProperty("/userId");
-      var bMine = oMsg.userId === sMyId;
+      var sMyName = this._ctxModel.getProperty("/userName");
+      var bMine = oMsg.userId === sMyId ||
+        (oMsg.userName && sMyName && oMsg.userName.toLowerCase() === sMyName.toLowerCase());
+      // Skip echoes of our own messages — we already added them optimistically
+      // when the user pressed send. The relay echoes to the bg transport socket
+      // (a different socket than the one that sent), which would duplicate.
+      if (bMine) { return; }
+      // Deduplicate true double-deliveries (same message on both sockets) by
+      // tracking a short-lived set of recently-seen message keys (ts+text+sender).
+      var sKey = (oMsg.ts || "") + "|" + oMsg.text + "|" + (oMsg.userId || oMsg.userName || "");
+      this._directSeen = this._directSeen || {};
+      if (this._directSeen[sKey]) { return; }
+      this._directSeen[sKey] = Date.now();
+      // Prune old entries (older than 10s) to bound memory.
+      var nNow = Date.now();
+      for (var k in this._directSeen) {
+        if (nNow - this._directSeen[k] > 10000) { delete this._directSeen[k]; }
+      }
       var oDate = oMsg.ts ? new Date(oMsg.ts) : new Date();
       var oBundle = this.getOwnerComponent().getModel("i18n").getResourceBundle();
       var sRoleLabel = oMsg.role === "dispatcher"
@@ -190,7 +207,7 @@ sap.ui.define([
       var aMessages = this._model.getProperty("/directMessages") || [];
       aMessages.push({
         text: oMsg.text, senderName: oMsg.userName || oMsg.senderName || "?",
-        senderRole: sRoleLabel, mine: bMine ? "mine" : "theirs",
+        senderRole: sRoleLabel, mine: "theirs",
         time: oDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
       });
       this._model.setProperty("/directMessages", aMessages);
