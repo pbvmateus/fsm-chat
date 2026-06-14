@@ -172,6 +172,20 @@ sap.ui.define([
           if (ctx.targetOutletName) {
             oModel.setProperty("/outlet", ctx.targetOutletName);
           }
+          // Capture FSM auth context for Data API calls (broadcast feature /
+          // inline API test). These may be absent depending on SDK version.
+          var sAccount = ctx.account || ctx.cloudAccount || ctx.accountName || null;
+          var sCompany = ctx.company || ctx.companyName || null;
+          var sToken = ctx.authToken || ctx.auth ||
+            (ctx.data && ctx.data.authToken) || null;
+          var sHost = ctx.cloudHost || ctx.dataCloudFullQualifiedDomainName ||
+            ctx.cloudFullQualifiedDomainName ||
+            (ctx.data && ctx.data.dataCloudFullQualifiedDomainName) || null;
+          if (sHost && sHost.indexOf("http") !== 0) { sHost = "https://" + sHost; }
+          if (sAccount) oModel.setProperty("/fsmAccount", sAccount);
+          if (sCompany) oModel.setProperty("/fsmCompany", sCompany);
+          if (sToken) oModel.setProperty("/fsmToken", sToken);
+          if (sHost) oModel.setProperty("/fsmHost", sHost);
         },
         function onSelection(activityId) {
           // The Shell told us which Service Call / Activity is selected.

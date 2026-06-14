@@ -51,6 +51,7 @@
     <button onclick="probePersons()">Query Persons (technicians)</button>
     <button onclick="probeRegions()" class="sec">Query Regions</button>
     <button onclick="probePersonFields()" class="sec">Inspect Person fields</button>
+    <button onclick="probeQuery()" class="sec">CoreSQL Query (Person plannable)</button>
   </div>
 
   <div class="card">
@@ -138,12 +139,36 @@
         }
       });
       var text = await res.text();
+      var ctype = res.headers.get('content-type') || '';
+      var looksHtml = /^\s*<!doctype html|<html[\s>]/i.test(text);
       var body;
       try { body = JSON.parse(text); } catch (e) { body = text; }
-      setOut({ requestUrl: url, httpStatus: res.status, ok: res.ok, body: body });
+
+      var verdict;
+      if (looksHtml) {
+        verdict = 'WRONG TARGET: the response is an HTML page (likely the chat app index.html), NOT the FSM API. ' +
+          'The request was redirected/rewritten and never reached FSM. This is usually a CORS block or a host/routing problem — the bearer call did not actually hit the Data API.';
+      } else if (res.ok && (ctype.indexOf('json') >= 0 || typeof body === 'object')) {
+        verdict = 'OK: looks like a real FSM API JSON response.';
+      } else if (res.status === 401 || res.status === 403) {
+        verdict = 'AUTH REJECTED: FSM was reached but refused the token (status ' + res.status + ').';
+      } else {
+        verdict = 'Reached something, but not a clean JSON success — inspect status/body.';
+      }
+
+      setOut({
+        verdict: verdict,
+        requestUrl: url,
+        finalUrl: res.url,
+        redirected: res.redirected,
+        httpStatus: res.status,
+        contentType: ctype,
+        ok: res.ok,
+        body: (looksHtml ? '(HTML omitted — see verdict)' : body)
+      });
     } catch (e) {
       setOut({ requestUrl: url, error: e.message,
-        hint: 'A network/CORS error here often means the browser blocked the cross-origin call, or the token is not valid for the Data API.' });
+        hint: 'A network/CORS error here means the browser blocked the cross-origin call (FSM did not return CORS headers permitting this origin), or the token/host is wrong. If the app HTML came back instead, the call was rewritten before reaching FSM.' });
     }
   }
 
@@ -156,10 +181,13 @@
     return true;
   }
 
-  // Person DTO holds technicians (and other people). We ask for a small page.
+  // Person DTO holds technicians (and other people). Technicians are Persons
+  // with plannable = true, so we filter on that. We ask for a small page.
   function probePersons() {
     var r = resolved(); if (!guard(r)) return;
-    doGet(buildUrl(r, 'Person', 'Person.21', 'id,firstName,lastName,userName,email'), r);
+    var u = buildUrl(r, 'Person', 'Person.21', 'id,firstName,lastName,userName,email,plannable') +
+      '&filter=' + encodeURIComponent('plannable==true');
+    doGet(u, r);
   }
   // Inspect what fields Person actually exposes in this tenant (no field filter).
   function probePersonFields() {
@@ -171,6 +199,43 @@
     var r = resolved(); if (!guard(r)) return;
     // Region DTO version may vary by tenant; try a common one.
     doGet(buildUrl(r, 'Region', 'Region.10', null), r);
+  }
+
+  // CoreSQL Query API — the standard way to run filtered SELECTs. This is also
+  // a good cross-check: if the Data API GET is blocked but this works (or vice
+  // versa), that tells us which path is usable from the browser.
+  async function probeQuery() {
+    var r = resolved(); if (!guard(r)) return;
+    var url = r.host + '/api/query/v1?account=' + encodeURIComponent(r.account) +
+      '&company=' + encodeURIComponent(r.company) + '&dtos=Person.21';
+    var coreSQL = "SELECT p.id, p.firstName, p.lastName, p.userName FROM Person p WHERE p.plannable = true";
+    setOut('POST ' + url + '\n\n' + coreSQL + '\n\n(loading…)');
+    try {
+      var res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Client-ID': 'fsm-chat-probe',
+          'X-Client-Version': '1.0.0',
+          'Authorization': 'bearer ' + r.token
+        },
+        body: JSON.stringify({ query: coreSQL })
+      });
+      var text = await res.text();
+      var looksHtml = /^\s*<!doctype html|<html[\s>]/i.test(text);
+      var body; try { body = JSON.parse(text); } catch (e) { body = text; }
+      setOut({
+        verdict: looksHtml
+          ? 'WRONG TARGET: HTML came back (app index.html), not the Query API — call was rewritten/blocked before reaching FSM.'
+          : (res.ok ? 'OK: Query API JSON response.' : 'Reached FSM but status ' + res.status + ' — inspect body.'),
+        requestUrl: url, finalUrl: res.url, redirected: res.redirected,
+        httpStatus: res.status, ok: res.ok,
+        body: (looksHtml ? '(HTML omitted)' : body)
+      });
+    } catch (e) {
+      setOut({ requestUrl: url, error: e.message,
+        hint: 'CORS/network block, or wrong host/token. If app HTML returned, the call never reached FSM.' });
+    }
   }
 </script>
 </body>

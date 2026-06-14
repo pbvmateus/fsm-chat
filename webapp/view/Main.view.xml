@@ -128,6 +128,27 @@
             textAlign="Center" />
         </VBox>
 
+        <!-- ===== Inline FSM API test (dispatcher, ?apitest=1) ===== -->
+        <VBox
+          visible="{= !!${/apiTest} }"
+          class="fsmChatInbox"
+          width="100%">
+          <Title text="FSM Data API test" level="H3" class="fsmChatInboxTitle" />
+          <Text text="Uses the live shell token. Read the 'verdict' line in the result." class="fsmChatInboxHint" />
+          <HBox wrap="Wrap" class="fsmChatBindRow">
+            <Button text="Persons (plannable)" type="Emphasized" press=".onApiTestPersons" class="fsmChatInboxPickBtn" />
+            <Button text="Regions" press=".onApiTestRegions" class="fsmChatInboxPickBtn" />
+            <Button text="CoreSQL Query" press=".onApiTestQuery" class="fsmChatInboxPickBtn" />
+          </HBox>
+          <TextArea
+            value="{/apiTestOut}"
+            editable="false"
+            growing="false"
+            rows="12"
+            width="100%"
+            class="fsmChatDebugLog" />
+        </VBox>
+
         <!-- ===== Dispatcher inbox: unattended conversations ===== -->
         <VBox
           visible="{= !!${/isDispatcher} &amp;&amp; ${/unattendedCount} > 0 }"

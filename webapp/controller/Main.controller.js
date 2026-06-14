@@ -50,7 +50,10 @@ sap.ui.define([
         // Name of the other party, learned from their messages/presence.
         peerName: "",
         // Clean activity id for display in the header / labels.
-        activityCode: ""
+        activityCode: "",
+        // Inline FSM API test (dispatcher, ?apitest=1)
+        apiTest: /[?&]apitest=1/.test(window.location.search),
+        apiTestOut: "(no API test run yet)"
       });
       this.getView().setModel(this._model);
 
@@ -183,6 +186,112 @@ sap.ui.define([
           window.removeEventListener("pagehide", this._onPageHide);
         }
       } catch (e) { /* noop */ }
+    },
+
+    // ===== Inline FSM Data API test (dispatcher, ?apitest=1) ================
+    // Reuses the REAL shell context token/account/host the app already holds,
+    // so we avoid the standalone probe's "SDK not loaded / manual token"
+    // problem. Results (incl. an HTML-vs-JSON verdict) go to /apiTestOut.
+
+    _apiCtx: function () {
+      var m = this._ctxModel;
+      var host = m.getProperty("/fsmHost");
+      if (host && host.indexOf("http") !== 0) { host = "https://" + host; }
+      return {
+        host: host,
+        account: m.getProperty("/fsmAccount"),
+        company: m.getProperty("/fsmCompany"),
+        token: m.getProperty("/fsmToken")
+      };
+    },
+
+    _apiTestShow: function (oObj) {
+      var s = (typeof oObj === "string") ? oObj : JSON.stringify(oObj, null, 2);
+      this._model.setProperty("/apiTestOut", s);
+    },
+
+    _apiTestRun: function (sUrl, sMethod, oBody) {
+      var that = this;
+      var r = this._apiCtx();
+      if (!r.host || !r.account || !r.company || !r.token) {
+        this._apiTestShow({
+          error: "Missing FSM context — the shell did not provide one of host/account/company/token.",
+          have: { host: r.host, account: r.account, company: r.company,
+            token: r.token ? ("present(" + String(r.token).length + " chars)") : "MISSING" },
+          note: "If token is MISSING, the shell SDK version may not expose authToken to web containers — that itself is the key finding."
+        });
+        return;
+      }
+      this._apiTestShow("Calling " + (sMethod || "GET") + " " + sUrl + " …");
+      var opts = {
+        method: sMethod || "GET",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Client-ID": "fsm-chat-apitest",
+          "X-Client-Version": "1.0.0",
+          "Authorization": "bearer " + r.token
+        }
+      };
+      if (oBody) { opts.body = JSON.stringify(oBody); }
+      fetch(sUrl, opts).then(function (res) {
+        return res.text().then(function (text) {
+          var looksHtml = /^\s*<!doctype html|<html[\s>]/i.test(text);
+          var body; try { body = JSON.parse(text); } catch (e) { body = text; }
+          var verdict;
+          if (looksHtml) {
+            verdict = "WRONG TARGET: HTML came back (the chat app), not FSM. The call was redirected/blocked before reaching the API — almost certainly CORS. Direct browser calls to FSM may not be possible; we'd route via the relay instead.";
+          } else if (res.ok) {
+            verdict = "OK: real FSM API JSON response.";
+          } else if (res.status === 401 || res.status === 403) {
+            verdict = "AUTH REJECTED: FSM reached but refused the token (" + res.status + ").";
+          } else {
+            verdict = "Reached FSM, status " + res.status + " — inspect body (may be a DTO-version issue).";
+          }
+          that._apiTestShow({
+            verdict: verdict, requestUrl: sUrl, finalUrl: res.url,
+            redirected: res.redirected, httpStatus: res.status, ok: res.ok,
+            body: looksHtml ? "(HTML omitted)" : body
+          });
+        });
+      }).catch(function (e) {
+        that._apiTestShow({
+          requestUrl: sUrl, error: e.message,
+          hint: "A CORS/network error here means the browser blocked the cross-origin call to FSM. That is the decisive finding: the Data API can't be called directly from the dispatcher's browser, so the broadcast feature must proxy through the relay server-side."
+        });
+      });
+    },
+
+    onApiTestPersons: function () {
+      var r = this._apiCtx();
+      // Person v25; technicians are EMPLOYEE-type persons that are plannable.
+      // 'regions' is the Set<Identifier> linking a person to Region(s).
+      var u = (r.host || "") + "/api/data/v4/Person?dtos=Person.25" +
+        "&account=" + encodeURIComponent(r.account || "") +
+        "&company=" + encodeURIComponent(r.company || "") +
+        "&pageSize=20&fields=" +
+        encodeURIComponent("id,firstName,lastName,userName,type,plannableResource,regions") +
+        "&filter=" + encodeURIComponent("plannableResource==true;type==EMPLOYEE");
+      this._apiTestRun(u, "GET");
+    },
+
+    onApiTestRegions: function () {
+      var r = this._apiCtx();
+      // Region v10: code, name, parentId (hierarchy).
+      var u = (r.host || "") + "/api/data/v4/Region?dtos=Region.10" +
+        "&account=" + encodeURIComponent(r.account || "") +
+        "&company=" + encodeURIComponent(r.company || "") +
+        "&pageSize=50&fields=" + encodeURIComponent("id,code,name,parentId");
+      this._apiTestRun(u, "GET");
+    },
+
+    onApiTestQuery: function () {
+      var r = this._apiCtx();
+      var u = (r.host || "") + "/api/query/v1?account=" + encodeURIComponent(r.account || "") +
+        "&company=" + encodeURIComponent(r.company || "") + "&dtos=Person.25";
+      // CoreSQL cross-check with the corrected field/type.
+      var sql = "SELECT p.id, p.firstName, p.lastName, p.userName, p.regions " +
+        "FROM Person p WHERE p.plannableResource = true AND p.type = 'EMPLOYEE'";
+      this._apiTestRun(u, "POST", { query: sql });
     },
 
     // ===== Away alerts (dispatcher messaged while technician not viewing) ====
