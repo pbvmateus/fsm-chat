@@ -61,6 +61,22 @@ sap.ui.define([], function () {
       var data;
       try { data = JSON.parse(evt.data); } catch (e) { return; }
 
+      // TEMP DIAGNOSTIC: record every raw incoming message on the window so it
+      // can be inspected from the console (window.__fsmRawLog) and surfaced in UI.
+      try {
+        window.__fsmRawLog = window.__fsmRawLog || [];
+        window.__fsmRawLog.push({
+          t: new Date().toISOString(),
+          myRoom: that._opts.roomId,
+          myRole: that._opts.role,
+          type: data.type,
+          msgRoom: data.roomId,
+          msgRole: data.role,
+          text: data.text
+        });
+        if (window.__fsmRawLog.length > 100) { window.__fsmRawLog.shift(); }
+      } catch (e) { /* noop */ }
+
       // Generic-room (unattended message) traffic carries roomId "fsm-generic"
       // and must NOT be filtered out by the activity-room check below. Handle it
       // first and return.
