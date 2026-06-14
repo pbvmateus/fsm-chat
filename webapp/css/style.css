@@ -421,3 +421,5 @@ html, body, #content, .sapMShell, .sapMApp {
   font-size: 0.75rem;
   margin-left: 0.5rem;
 }
+.fsmDirectClearRow { padding: 0.25rem 0.5rem 0; }
+.fsmDirectClearBtn { color: var(--sapNegativeColor, #bb0000); }

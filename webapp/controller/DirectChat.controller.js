@@ -101,8 +101,11 @@ sap.ui.define([
       });
       if (!aNew.length) { return; }
 
-      // Prepend new items (newest first).
+      // Prepend new items, then sort newest-first so the order is always consistent.
       var aMerged = aNew.concat(aExisting);
+      aMerged.sort(function (a, b) {
+        return (new Date(b.ts || 0).getTime()) - (new Date(a.ts || 0).getTime());
+      });
       this._model.setProperty("/broadcasts", aMerged);
       var nUnread = aMerged.filter(function (m) { return !m.read; }).length;
       this._model.setProperty("/unreadCount", nUnread);
@@ -122,6 +125,14 @@ sap.ui.define([
         this._model.setProperty("/broadcasts", aBC.slice());
         this._model.setProperty("/unreadCount", 0);
       }
+    },
+
+    onClearBroadcasts: function () {
+      this._model.setProperty("/broadcasts", []);
+      this._model.setProperty("/unreadCount", 0);
+      // Also clear the component's persistent list so they don't reappear.
+      var oComp = this.getOwnerComponent();
+      if (oComp._bgBroadcasts) { oComp._bgBroadcasts = []; }
     },
 
     // ── Tab selection ──────────────────────────────────────────────────────
@@ -248,11 +259,22 @@ sap.ui.define([
     },
 
     onNavBack: function () {
+      // When opened via screen=direct (/mobile container), there is no
+      // meaningful "main" route to go back to — it would show the activity
+      // chat's unbound "Select a Service Call" screen. Instead, go back in
+      // browser history which lets FSM handle the navigation (closes the
+      // container and returns to the FSM screen the technician came from).
+      var sScreen = new URLSearchParams(window.location.search).get("screen");
+      if (sScreen === "direct") {
+        try { window.history.back(); } catch (e) { /* noop */ }
+        return;
+      }
       var oHistory = sap.ui.core.routing.History.getInstance();
       if (oHistory.getPreviousHash() !== undefined) {
         window.history.go(-1);
       } else {
-        this.getOwnerComponent().getRouter().navTo("main");
+        // No history — stay on this screen rather than showing the wrong page.
+        // (Nothing to do.)
       }
     },
 

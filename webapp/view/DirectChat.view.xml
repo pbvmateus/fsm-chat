@@ -47,6 +47,18 @@
               <Text text="{i18n>directNoBroadcasts}" class="fsmChatEmptyText" />
             </VBox>
 
+            <HBox
+              visible="{= ${/broadcasts}.length > 0 }"
+              justifyContent="End"
+              class="fsmDirectClearRow">
+              <Button
+                text="{i18n>broadcastClearAll}"
+                icon="sap-icon://delete"
+                type="Transparent"
+                press=".onClearBroadcasts"
+                class="fsmDirectClearBtn" />
+            </HBox>
+
             <List
               visible="{= ${/broadcasts}.length > 0 }"
               items="{ path: '/broadcasts', templateShareable: false }"

@@ -16,6 +16,29 @@
     data-sap-ui-frameOptions="allow"
     data-sap-ui-libs="sap.m,sap.ui.core,sap.f,sap.ui.layout">
   </script>
+
+  <!-- Luigi Client — required to suppress the "leaving application" confirmation
+       dialog that FSM Mobile shows when the user navigates to a different menu
+       item while the web container is open. Without this, Luigi (the micro-frontend
+       framework under FSM Shell) assumes the app may have unsaved state and asks
+       for confirmation. Loading LuigiClient and calling addInitListener() tells
+       Luigi the app is Luigi-aware and always safe to navigate away from. -->
+  <script src="https://unpkg.com/@luigi-project/client/luigi-client.js"></script>
+  <script>
+    // Tell Luigi this app is always clean (no unsaved changes) so it never
+    // shows the "You are leaving the application" confirmation dialog.
+    document.addEventListener('DOMContentLoaded', function () {
+      if (window.LuigiClient) {
+        LuigiClient.addInitListener(function () {
+          // App is initialised — Luigi will no longer block navigation.
+        });
+        // Ensure Luigi never treats this app as having unsaved changes.
+        if (LuigiClient.uxManager && LuigiClient.uxManager().removeBackdrop) {
+          LuigiClient.uxManager().removeBackdrop();
+        }
+      }
+    });
+  </script>
 </head>
 <body class="sapUiBody" id="content">
   <div
