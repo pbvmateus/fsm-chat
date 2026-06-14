@@ -49,7 +49,22 @@ sap.ui.define([
 
       this.getRouter().initialize();
 
-      // Kick off async Shell resolution (no-op when running standalone).
+      // If the URL carries screen=direct (set by the /mobile Cloudflare function
+      // for the standalone technician Dispatcher Channel container), navigate
+      // straight to the DirectChat view without showing the main activity chat.
+      var sScreen = new URLSearchParams(window.location.search).get("screen");
+      if (sScreen === "direct") {
+        // Also carry over userId/userName from URL into the context model so
+        // the DirectChat controller has identity even before Shell context arrives.
+        var sUrlUserId = new URLSearchParams(window.location.search).get("userId");
+        var sUrlUserName = new URLSearchParams(window.location.search).get("userName");
+        if (sUrlUserId) oContextModel.setProperty("/userId", sUrlUserId);
+        if (sUrlUserName) oContextModel.setProperty("/userName", decodeURIComponent(sUrlUserName));
+        // Navigate after a microtask so the router is ready.
+        setTimeout(function () {
+          this.getRouter().navTo("directchat", {}, true);
+        }.bind(this), 0);
+      }
       this._resolveViaShell();
     },
 

@@ -27,8 +27,23 @@ sap.ui.define([
       // Share broadcasts from the main model (updated by Main controller).
       this._syncBroadcastsFromApp();
 
-      // Connect direct chat transport.
-      this._connectDirect();
+      // Connect direct chat. If userId isn't available yet (shell context
+      // hasn't arrived), retry briefly — it arrives within ~500ms.
+      var sUserId = this._ctxModel.getProperty("/userId");
+      if (sUserId) {
+        this._connectDirect();
+      } else {
+        var that = this;
+        var nAttempts = 0;
+        var oRetry = setInterval(function () {
+          nAttempts++;
+          var sId = that._ctxModel.getProperty("/userId");
+          if (sId || nAttempts >= 20) {
+            clearInterval(oRetry);
+            if (sId) { that._connectDirect(); }
+          }
+        }, 100);
+      }
 
       // Listen for new broadcasts pushed by the app.
       this.getOwnerComponent().attachEvent(
