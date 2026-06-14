@@ -74,7 +74,11 @@ sap.ui.define([
       var sUserId = this._ctxModel.getProperty("/userId");
       var sUserName = this._ctxModel.getProperty("/userName");
       var sRole = this._ctxModel.getProperty("/role");
-      var sDirectRoom = "fsm-direct-" + sUserId;
+      // Room key uses userName (lowercased) — consistent with the relay and
+      // the dispatcher's broadcast targeting which also uses userName.
+      var sUserKey = (sUserName || sUserId || "unknown").toLowerCase();
+      var sDirectRoom = "fsm-direct-" + sUserKey;
+      this._directRoom = sDirectRoom;
 
       var oOpts = {
         roomId: sDirectRoom,
@@ -157,8 +161,8 @@ sap.ui.define([
       var sText = (this._model.getProperty("/directDraft") || "").trim();
       if (!sText) { return; }
       if (!this._transport) { MessageToast.show("Not connected."); return; }
-      var sUserId = this._ctxModel.getProperty("/userId");
-      var sRoom = "fsm-direct-" + sUserId;
+      var sRoom = this._directRoom || ("fsm-direct-" +
+        (this._ctxModel.getProperty("/userName") || "unknown").toLowerCase());
       // Add message to local list immediately (optimistic).
       var oDate = new Date();
       var aMessages = this._model.getProperty("/directMessages") || [];

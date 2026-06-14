@@ -185,12 +185,16 @@ wss.on("connection", (ws) => {
       if (!ws._joinedAt) ws._joinedAt = Date.now();
       addToRoom(roomId, ws);
 
-      // Every technician also joins two personal rooms:
-      // fsm-user-<userId>   — for broadcast delivery (one-way from dispatcher)
-      // fsm-direct-<userId> — for the always-open two-way direct channel
-      if (msg.userId && msg.role === "technician") {
-        addToRoom("fsm-user-" + msg.userId, ws);
-        addToRoom("fsm-direct-" + msg.userId, ws);
+      // Every technician also joins two personal rooms keyed by userName
+      // (lowercased for consistency). userName is stable across both the FSM
+      // Person roster (where the dispatcher picks targets) and the mobile
+      // context — unlike userId which is numeric on mobile but a GUID in the
+      // roster. This ensures targeted broadcasts actually reach the right device.
+      if (msg.userName && msg.role === "technician") {
+        const uKey = msg.userName.toLowerCase();
+        addToRoom("fsm-user-" + uKey, ws);
+        addToRoom("fsm-direct-" + uKey, ws);
+        ws._userKey = uKey;
       }
 
       // Announce presence to existing peers (include role).
@@ -279,7 +283,7 @@ wss.on("connection", (ws) => {
     // message is copied to fsm-generic so dispatchers see it in their inbox.
     // Dispatchers can also send direct-chat to fsm-direct-<userId> to reply.
     if (msg.type === "direct-chat") {
-      const directRoom = msg.roomId || (ws._userId ? "fsm-direct-" + ws._userId : null);
+      const directRoom = msg.roomId || (ws._userKey ? "fsm-direct-" + ws._userKey : null);
       if (!directRoom) { return; }
       const payload = Object.assign({}, msg, {
         type: "direct-chat",
@@ -295,9 +299,9 @@ wss.on("connection", (ws) => {
       broadcast(directRoom, payload, ws);
       // If technician sent this and no dispatcher is in the room → notify generic.
       if (ws._role === "technician" && !dispatcherPresent(directRoom)) {
-        const techUserId = directRoom.replace("fsm-direct-", "");
+        const techUserKey = directRoom.replace("fsm-direct-", "");
         const entry = {
-          activityId: "direct:" + techUserId,
+          activityId: "direct:" + techUserKey,
           roomId: directRoom,
           text: msg.text,
           userId: ws._userId,
@@ -309,7 +313,7 @@ wss.on("connection", (ws) => {
         pruneBacklog();
         broadcast(GENERIC_ROOM, {
           type: "generic-message",
-          activityId: "direct:" + techUserId,
+          activityId: "direct:" + techUserKey,
           roomId: directRoom,
           text: msg.text,
           userId: ws._userId,
@@ -322,10 +326,11 @@ wss.on("connection", (ws) => {
     }
 
     // ---- broadcast message (dispatcher → one/many/all technicians) -------
-    // { type:'broadcast-message', text, targets:['all'|userId,...],
+    // { type:'broadcast-message', text, targets:['all'|userName.toLowerCase(),...],
     //   senderName, senderId, ts }
-    // Delivers to each technician's fsm-user-<userId> room. If targets=['all']
-    // or targets is absent, delivers to every connected technician.
+    // Delivers to each technician's fsm-user-<userName> room. Rooms are keyed
+    // by userName (lowercased) which is consistent across the FSM roster and
+    // the mobile context (unlike userId which differs between the two).
     if (msg.type === "broadcast-message") {
       if (ws._role !== "dispatcher") return;
       const targets = Array.isArray(msg.targets) ? msg.targets : ["all"];

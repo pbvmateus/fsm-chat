@@ -496,7 +496,8 @@ sap.ui.define([
         var aTechs = this._model.getProperty("/technicians") || [];
         aTargets = aTechs
           .filter(function (t) { return t.regions.indexOf(sRegionId) >= 0; })
-          .map(function (t) { return t.id; });
+          .map(function (t) { return (t.userName || "").toLowerCase(); })
+          .filter(function (u) { return !!u; });
         if (!aTargets.length) {
           MessageToast.show("No technicians assigned to that region.");
           return;
@@ -505,7 +506,8 @@ sap.ui.define([
         var aBroadcastTargets = this._model.getProperty("/broadcastTargets") || [];
         aTargets = aBroadcastTargets
           .filter(function (t) { return t.selected; })
-          .map(function (t) { return t.id; });
+          .map(function (t) { return (t.userName || "").toLowerCase(); })
+          .filter(function (u) { return !!u; });
         if (!aTargets.length) {
           MessageToast.show("Select at least one technician.");
           return;
@@ -692,6 +694,7 @@ sap.ui.define([
         onPresence: function (p) { that._onPresence(p); },
         onTyping: function (b) { that._onPeerTyping(b); },
         onSignal: function (sig) { that._onSignal(sig); },
+        onDirectChat: function (m) { that._onIncoming(m); },
         onGenericMessage: function (g) { that._onGenericMessage(g); },
         onGenericBacklog: function (g) { that._onGenericBacklog(g); },
         onGenericClaimed: function (g) { that._onGenericClaimed(g); },
@@ -830,11 +833,23 @@ sap.ui.define([
       if (!sActivityId) { return; }
       // Remove from our own inbox immediately for snappy feedback.
       this._onGenericClaimed({ activityId: sActivityId });
-      // Clear the current-room marker so _connectRoom can't short-circuit if
-      // any stale state lingers; this guarantees a real (re)join to the
-      // activity room rather than staying on the generic connection.
+      // Clear the current-room marker so _connectRoom can't short-circuit.
       this._currentRoom = null;
-      // Bind the whole app to this activity (updates header + connects room).
+      // Direct chat pickup: activityId is "direct:<userName>" — join the
+      // fsm-direct-<userName> room directly instead of an activity room.
+      if (sActivityId.indexOf("direct:") === 0) {
+        var sUserKey = sActivityId.slice("direct:".length);
+        var sDirectRoom = "fsm-direct-" + sUserKey;
+        this._connectRoom(sDirectRoom);
+        // Also update the context model so the header shows something sensible.
+        var sDisplayName = oCtx.getProperty("lastName") || sUserKey;
+        this._ctxModel.setProperty("/_bound", true);
+        this._ctxModel.setProperty("/objectId", sActivityId);
+        this._model.setProperty("/peerName", sDisplayName);
+        this._model.setProperty("/activityCode", "Direct · " + sDisplayName);
+        return;
+      }
+      // Normal activity pickup.
       this.getOwnerComponent().bindActivityManually(sActivityId);
     },
 

@@ -149,8 +149,10 @@ export async function onRequest(context) {
   if (cloudId) {
     out.set("objectId", cloudId);
     if (objectType) out.set("objectType", objectType);
-    if (userName && !out.has("userName")) out.set("userName", userName);
   }
+  // Always pass userName so the app has identity for direct chat routing,
+  // even when no activity (cloudId) was selected.
+  if (userName && !out.has("userName")) out.set("userName", userName);
 
   // Redirect to the static app (GET) with context in the query string.
   const target = url.origin + "/index.html?" + out.toString();
