@@ -552,6 +552,12 @@ sap.ui.define([
         MessageToast.show("Select a technician first.");
         return;
       }
+      if (aTargets.length > 1) {
+        // Direct chat is a one-to-one conversation. For reaching several
+        // technicians at once, the dispatcher should use a broadcast instead.
+        MessageToast.show("Direct chat is one-to-one — select a single technician (use Broadcast to message several).");
+        return;
+      }
       var oTech = aTargets[0];
       var sUserKey = (oTech.userName || "").toLowerCase();
       var sDisplayName = (oTech.firstName || "") + " " + (oTech.lastName || "");
