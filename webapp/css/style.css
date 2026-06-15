@@ -374,8 +374,31 @@ html, body, #content, .sapMShell, .sapMApp {
 .fsmChatBroadcastTabs { margin-bottom: 0.75rem; }
 .fsmChatBroadcastSelect { margin-bottom: 0.5rem; }
 .fsmChatBroadcastInput { margin: 0.5rem 0; }
-.fsmChatBroadcastList { max-height: 12rem; overflow-y: auto; margin-bottom: 0.5rem; }
-.fsmChatBroadcastItem { padding: 0; }
+.fsmChatBroadcastList {
+  max-height: 12rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+  margin-bottom: 0.5rem;
+  padding-left: 0.25rem;
+}
+/* Do NOT zero the item padding — SAPUI5 reserves left space for the
+   MultiSelect checkbox there; zeroing it clips the checkbox. */
+.fsmChatBroadcastItem {
+  padding-left: 0.25rem;
+  min-height: 3rem;
+}
+.fsmChatBroadcastList .sapMLIB {
+  border-radius: 0.4rem;
+}
+.fsmChatBroadcastList .sapMLIB:hover {
+  background: var(--sapList_Hover_Background, #f5f6f7);
+}
+/* Guarantee the checkbox column is fully visible and not clipped. */
+.fsmChatBroadcastList .sapMLIBSelectM,
+.fsmChatBroadcastList .sapMCb {
+  margin-left: 0.25rem;
+  flex: 0 0 auto;
+}
 .fsmChatBroadcastItemRow { padding: 0.35rem 0.25rem; gap: 0.5rem; }
 .fsmChatBroadcastPreview { margin-bottom: 0.5rem; }
 .fsmChatBroadcastPreviewItem { padding: 0.25rem 0; }
