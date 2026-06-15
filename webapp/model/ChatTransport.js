@@ -99,6 +99,9 @@ sap.ui.define([], function () {
         case "direct-chat":
           that._h.onDirectChat && that._h.onDirectChat(data);
           return;
+        case "direct-history":
+          that._h.onDirectHistory && that._h.onDirectHistory(data);
+          return;
         case "fsm-roster":
           that._h.onFsmRoster && that._h.onFsmRoster(data);
           return;

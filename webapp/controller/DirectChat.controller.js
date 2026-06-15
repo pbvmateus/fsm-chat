@@ -165,6 +165,10 @@ sap.ui.define([
         },
         onMessage: function (m) { that._onDirectIncoming(m); },
         onDirectChat: function (m) { that._onDirectIncoming(m); },
+        onDirectHistory: function (data) {
+          var items = (data && data.items) || [];
+          that._loadDirectHistory(items);
+        },
         onSignal: function (sig) { that._onSignal(sig); },
         onBroadcastReceived: function (m) {
           that._onBroadcastEvent({ getParameter: function (k) { return k === "message" ? m : null; } });
@@ -181,6 +185,49 @@ sap.ui.define([
         onFsmRoster: function () {}
       });
       this._transport.connect();
+    },
+
+    _loadDirectHistory: function (aItems) {
+      if (!aItems || !aItems.length) { return; }
+      var sMyRole = this._ctxModel.getProperty("/role");
+      var oBundle = this.getOwnerComponent().getModel("i18n").getResourceBundle();
+      var aExisting = this._model.getProperty("/directMessages") || [];
+      // Dedup against what's already shown (by ts+text).
+      var oSeen = {};
+      aExisting.forEach(function (m) { oSeen[(m._ts || "") + "|" + m.text] = true; });
+      var that = this;
+      var aAdd = [];
+      aItems.forEach(function (m) {
+        var sKey = (m.ts || "") + "|" + m.text;
+        if (oSeen[sKey]) { return; }
+        oSeen[sKey] = true;
+        var bMine = m.role && sMyRole && m.role === sMyRole;
+        var sRoleLabel = m.role === "dispatcher"
+          ? oBundle.getText("roleDispatcher")
+          : (m.role === "technician" ? oBundle.getText("roleTechnician") : "");
+        var oDate = m.ts ? new Date(m.ts) : new Date();
+        aAdd.push({
+          text: m.text,
+          senderName: m.userName || "?",
+          senderRole: sRoleLabel,
+          mine: bMine ? "mine" : "theirs",
+          time: oDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          _ts: m.ts
+        });
+        // Mark as seen in the dedup set so live echoes don't double up.
+        var sDedupKey = (m.ts || "") + "|" + m.text + "|" + (m.userId || m.userName || "");
+        that._directSeen = that._directSeen || {};
+        that._directSeen[sDedupKey] = Date.now();
+      });
+      if (!aAdd.length) { return; }
+      // History is oldest-first; existing live messages (if any) go after.
+      var aMerged = aAdd.concat(aExisting);
+      // Sort by timestamp to keep chronological order.
+      aMerged.sort(function (a, b) {
+        return (new Date(a._ts || 0).getTime() || 0) - (new Date(b._ts || 0).getTime() || 0);
+      });
+      this._model.setProperty("/directMessages", aMerged);
+      setTimeout(this._scrollToBottom.bind(this), 100);
     },
 
     _onDirectIncoming: function (oMsg) {
@@ -215,7 +262,8 @@ sap.ui.define([
       aMessages.push({
         text: oMsg.text, senderName: oMsg.userName || oMsg.senderName || "?",
         senderRole: sRoleLabel, mine: "theirs",
-        time: oDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+        time: oDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        _ts: oMsg.ts
       });
       this._model.setProperty("/directMessages", aMessages);
       setTimeout(this._scrollToBottom.bind(this), 80);
@@ -251,7 +299,8 @@ sap.ui.define([
         senderName: this._ctxModel.getProperty("/userName") || "Me",
         senderRole: oBundle.getText("roleTechnician"),
         mine: "mine",
-        time: oDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+        time: oDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        _ts: oDate.toISOString()
       });
       this._model.setProperty("/directMessages", aMessages);
       this._model.setProperty("/directDraft", "");

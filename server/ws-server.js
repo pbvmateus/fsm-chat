@@ -46,6 +46,29 @@ const BROADCAST_MAX_PER_USER = 100;
 const broadcastHistory = new Map(); // userName -> messages[]
 const broadcastClearedAt = new Map(); // userName -> epoch ms of last clear
 
+// Per-technician direct-message history — replayed when the technician connects
+// so messages a dispatcher sent while they were offline are not lost.
+// Map of userKey -> [{text, userName, userId, role, ts}]
+const DIRECT_MAX_PER_USER = 100;
+const directHistory = new Map(); // userKey (lowercased) -> messages[]
+
+function storeDirect(userKey, msg) {
+  if (!userKey) return;
+  const key = userKey.toLowerCase();
+  if (!directHistory.has(key)) directHistory.set(key, []);
+  const arr = directHistory.get(key);
+  arr.push(msg);
+  const cutoff = Date.now() - GENERIC_TTL_MS;
+  while (arr.length > 0 && (arr.length > DIRECT_MAX_PER_USER ||
+         (new Date(arr[0].ts).getTime() || 0) < cutoff)) {
+    arr.shift();
+  }
+}
+
+function getDirectHistory(userKey) {
+  return directHistory.get(userKey.toLowerCase()) || [];
+}
+
 function storeBroadcast(targetUserName, msg) {
   if (!targetUserName) return;
   const key = targetUserName.toLowerCase();
@@ -268,6 +291,21 @@ wss.on("connection", (ws) => {
             }));
           } catch (e) { /* noop */ }
         }
+
+        // Replay direct-message history (the full direct conversation) so any
+        // messages a dispatcher sent while this technician was offline appear
+        // when they open the Dispatcher Channel.
+        const directItems = getDirectHistory(uKey)
+          .slice()
+          .sort((a, b) => (new Date(a.ts).getTime() || 0) - (new Date(b.ts).getTime() || 0));
+        if (directItems.length > 0) {
+          try {
+            ws.send(JSON.stringify({
+              type: "direct-history",
+              items: directItems
+            }));
+          } catch (e) { /* noop */ }
+        }
       }
 
       // Announce presence to existing peers (include role).
@@ -370,6 +408,20 @@ wss.on("connection", (ws) => {
       if (!ws._rooms || !ws._rooms.has(directRoom)) { addToRoom(directRoom, ws); }
       // Deliver to everyone else in the direct room.
       broadcast(directRoom, payload, ws);
+
+      // Persist this message under the technician's key so it can be replayed
+      // when the technician reconnects (covers dispatcher messages sent while
+      // the technician's chat was closed). The technician's key is derived from
+      // the direct room name, which is the same regardless of who sent.
+      const techUserKey = directRoom.replace("fsm-direct-", "");
+      storeDirect(techUserKey, {
+        text: payload.text,
+        userName: payload.userName,
+        userId: payload.userId,
+        role: payload.role,
+        ts: new Date(payload.ts).getTime() || Date.now()
+      });
+
       // If technician sent this and no dispatcher is in the room → notify generic.
       if (ws._role === "technician" && !dispatcherPresent(directRoom)) {
         const techUserKey = directRoom.replace("fsm-direct-", "");
@@ -542,6 +594,19 @@ wss.on("connection", (ws) => {
 
     // Deliver to the activity room as usual.
     broadcast(roomId, msg, ws);
+
+    // If a plain chat message lands in a direct room (e.g. older dispatcher
+    // send path), persist it to direct history so the technician sees it later.
+    if (msg.type === "chat" && roomId.indexOf("fsm-direct-") === 0) {
+      const techUserKey = roomId.replace("fsm-direct-", "");
+      storeDirect(techUserKey, {
+        text: msg.text,
+        userName: msg.userName || msg.senderName || ws._userName,
+        userId: msg.userId || ws._userId,
+        role: ws._role || msg.role,
+        ts: Date.now()
+      });
+    }
 
     // Generic-room fallback: a technician CHAT message to an activity room
     // with NO dispatcher present is copied to the generic room + retained.
