@@ -218,17 +218,18 @@ html, body, #content, .sapMShell, .sapMApp {
 
 /* ---- Unbound / activity-binding panel ---------------------------- */
 .fsmChatBindPanel {
-  padding: 1.5rem 1.5rem 2rem;
+  padding: 1rem 1.5rem 2rem;
   box-sizing: border-box;
   background: var(--sapBackgroundColor, #f5f6f7);
+  min-height: 100%;
 }
 .fsmChatBindIcon {
-  font-size: 3.25rem;
+  font-size: 2.5rem;
   color: var(--sapContent_NonInteractiveIconColor, #b3b3b3);
-  margin-bottom: 1rem;
+  margin-bottom: 0.5rem;
 }
 .fsmChatBindTitle.sapMTitle {
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.25rem;
   color: var(--sapTextColor, #32363a);
 }
 .fsmChatBindHint.sapMText {
@@ -236,7 +237,7 @@ html, body, #content, .sapMShell, .sapMApp {
   color: var(--sapContent_LabelColor, #6a6d70);
   font-size: 0.875rem;
   line-height: 1.4;
-  margin-bottom: 1.25rem;
+  margin-bottom: 0.75rem;
 }
 .fsmChatBindRow {
   gap: 0.5rem;
@@ -293,7 +294,7 @@ html, body, #content, .sapMShell, .sapMApp {
 
 /* ===== Dispatcher inbox: unattended messages ===== */
 .fsmChatInbox {
-  margin-top: 1.5rem;
+  margin-top: 1rem;
   padding: 1rem;
   background: var(--sapList_Background, #fff);
   border: 1px solid var(--sapList_BorderColor, #e5e5e5);
@@ -375,7 +376,7 @@ html, body, #content, .sapMShell, .sapMApp {
 .fsmChatBroadcastSelect { margin-bottom: 0.5rem; }
 .fsmChatBroadcastInput { margin: 0.5rem 0; }
 .fsmChatBroadcastList {
-  max-height: 12rem;
+  max-height: 18rem;
   overflow-y: auto;
   overflow-x: hidden;
   margin-bottom: 0.5rem;

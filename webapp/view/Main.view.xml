@@ -165,6 +165,49 @@
             class="fsmChatDebugLog" />
         </VBox>
 
+        <!-- ===== Dispatcher inbox: unattended conversations ===== -->
+        <VBox
+          visible="{= !!${/isDispatcher} &amp;&amp; ${/unattendedCount} > 0 }"
+          class="fsmChatInbox"
+          width="100%">
+          <HBox class="fsmChatInboxHead" alignItems="Center">
+            <core:Icon src="sap-icon://inbox" class="fsmChatInboxIcon" />
+            <Title
+              text="{= ${i18n>inboxTitle} + ' (' + ${/unattendedCount} + ')' }"
+              level="H3"
+              class="fsmChatInboxTitle" />
+          </HBox>
+          <Text text="{i18n>inboxHint}" class="fsmChatInboxHint" />
+          <List
+            items="{ path: '/unattended', templateShareable: false }"
+            showSeparators="Inner"
+            class="fsmChatInboxList">
+            <CustomListItem class="fsmChatInboxItem">
+              <HBox justifyContent="SpaceBetween" alignItems="Center" width="100%" class="fsmChatInboxRow">
+                <VBox class="fsmChatInboxRowText">
+                  <Text
+                    text="{= (${lastName} || ${i18n>roleTechnician}) + ' \u00b7 ' + ${i18n>roleTechnician} }"
+                    class="fsmChatInboxName" />
+                  <Text text="{lastText}" maxLines="1" class="fsmChatInboxPreview" />
+                  <Text text="{= ${i18n>activityLabel} + ' ' + ${activityId} }" maxLines="1" class="fsmChatInboxActivity" />
+                </VBox>
+                <VBox alignItems="End" class="fsmChatInboxRowAction">
+                  <ObjectStatus
+                    text="{= ${count} > 1 ? ${count} + ' ' + ${i18n>inboxMsgs} : '1 ' + ${i18n>inboxMsg} }"
+                    state="Information"
+                    class="fsmChatInboxCount" />
+                  <Button
+                    text="{i18n>inboxPickUp}"
+                    type="Emphasized"
+                    icon="sap-icon://begin"
+                    press=".onPickUp"
+                    class="fsmChatInboxPickBtn" />
+                </VBox>
+              </HBox>
+            </CustomListItem>
+          </List>
+        </VBox>
+
         <!-- ===== Dispatcher broadcast panel ===== -->
         <VBox
           visible="{= !!${/isDispatcher} }"
@@ -277,49 +320,6 @@
               press=".onBroadcastSend"
               class="fsmChatInboxPickBtn" />
           </VBox>
-        </VBox>
-
-        <!-- ===== Dispatcher inbox: unattended conversations ===== -->
-        <VBox
-          visible="{= !!${/isDispatcher} &amp;&amp; ${/unattendedCount} > 0 }"
-          class="fsmChatInbox"
-          width="100%">
-          <HBox class="fsmChatInboxHead" alignItems="Center">
-            <core:Icon src="sap-icon://inbox" class="fsmChatInboxIcon" />
-            <Title
-              text="{= ${i18n>inboxTitle} + ' (' + ${/unattendedCount} + ')' }"
-              level="H3"
-              class="fsmChatInboxTitle" />
-          </HBox>
-          <Text text="{i18n>inboxHint}" class="fsmChatInboxHint" />
-          <List
-            items="{ path: '/unattended', templateShareable: false }"
-            showSeparators="Inner"
-            class="fsmChatInboxList">
-            <CustomListItem class="fsmChatInboxItem">
-              <HBox justifyContent="SpaceBetween" alignItems="Center" width="100%" class="fsmChatInboxRow">
-                <VBox class="fsmChatInboxRowText">
-                  <Text
-                    text="{= (${lastName} || ${i18n>roleTechnician}) + ' \u00b7 ' + ${i18n>roleTechnician} }"
-                    class="fsmChatInboxName" />
-                  <Text text="{lastText}" maxLines="1" class="fsmChatInboxPreview" />
-                  <Text text="{= ${i18n>activityLabel} + ' ' + ${activityId} }" maxLines="1" class="fsmChatInboxActivity" />
-                </VBox>
-                <VBox alignItems="End" class="fsmChatInboxRowAction">
-                  <ObjectStatus
-                    text="{= ${count} > 1 ? ${count} + ' ' + ${i18n>inboxMsgs} : '1 ' + ${i18n>inboxMsg} }"
-                    state="Information"
-                    class="fsmChatInboxCount" />
-                  <Button
-                    text="{i18n>inboxPickUp}"
-                    type="Emphasized"
-                    icon="sap-icon://begin"
-                    press=".onPickUp"
-                    class="fsmChatInboxPickBtn" />
-                </VBox>
-              </HBox>
-            </CustomListItem>
-          </List>
         </VBox>
 
         <!-- DEBUG: shows raw Shell messages when launched with &debug=1 -->
